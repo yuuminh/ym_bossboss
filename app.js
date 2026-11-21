@@ -42,17 +42,25 @@ const settings = {
   grace: saved.grace ?? CONFIG.PASSED_GRACE_MINUTES,   // boss đã ra, ngắt khỏi đầu bảng sau bao nhiêu phút
   volume: saved.volume ?? 100,                          // âm lượng 0-100
   look: saved.look ?? CONFIG.LOOKAHEAD_MINUTES,         // hiện boss ra trong bao nhiêu phút tới (0 = tất cả trong ngày)
-  colors: saved.colors ?? {},                           // màu từng server: { T7: "#ff6b6b", ... }
+  // màu từng server: { T7: "#cfe2f3", ... }. Bản màu mặc định mới (colorsV=2) sẽ thay màu cũ 1 lần
+  colors: saved.colorsV === 2 ? (saved.colors ?? {}) : {},
   panel: saved.panel ?? true,                           // khung Cài đặt đang mở hay thu gọn
 };
 
 // Bảng màu mặc định, mỗi server được gán 1 màu khác nhau (đổi được bằng ô chọn màu trên nút server)
 const PALETTE = ["#4f8cff", "#ff8a4c", "#3ecf8e", "#e86bd0", "#f2c94c", "#9b7bff", "#2bc4d9", "#ff6b6b"];
 
+// Màu mặc định theo tên server (giống màu dòng trong Google Sheet)
+const DEFAULT_COLORS = {
+  L2: "#f9cb9c", K6: "#f4cccc", T7: "#cfe2f3", L7: "#b6d7a8",
+  K6XL: "#ea9999", L2XL: "#f6b26b", L7XL: "#93c47d",
+};
+
 function colorOf(g) {
   if (!settings.colors[g]) {
     const used = new Set(Object.values(settings.colors));
-    settings.colors[g] = PALETTE.find((c) => !used.has(c)) || PALETTE[Object.keys(settings.colors).length % PALETTE.length];
+    settings.colors[g] = DEFAULT_COLORS[g.toUpperCase()] ||
+      PALETTE.find((c) => !used.has(c)) || PALETTE[Object.keys(settings.colors).length % PALETTE.length];
     saveSettings();
   }
   return settings.colors[g];
@@ -77,6 +85,7 @@ function saveSettings() {
     volume: settings.volume,
     look: settings.look,
     colors: settings.colors,
+    colorsV: 2,
     panel: settings.panel,
     hidden: [...settings.hidden],
     muted: [...settings.muted],
@@ -341,16 +350,25 @@ function fmt(sec) {
   return (sec < 0 ? "-" : "") + (h ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`);
 }
 
-// Chữ hiển thị ở cột Đếm ngược: "Còn 5 phút", "Còn 1 giờ 4 phút", "Đã ra 3 phút"
+// Cột Đếm ngược: cả chữ lẫn số đổi màu theo thời gian còn lại
+//   trên 15 phút → trắng · trên 5 phút → xám · dưới 5 phút → đỏ
+function cdLevel(sec) {
+  if (sec < 0) return "x";      // đã ra
+  if (sec >= 900) return "w";   // trên 15 phút
+  if (sec >= 300) return "m";   // 5 – 15 phút
+  return "r";                   // dưới 5 phút
+}
+
 function fmtCountdown(sec) {
+  const n = (v) => `<span class="n">${v}</span>`;
   if (sec < 0) {
     const m = Math.floor(-sec / 60);
-    return m < 1 ? "Vừa ra" : `Đã ra ${m} phút`;
+    return m < 1 ? "Vừa ra" : `Đã ra ${n(m)} phút`;
   }
-  if (sec < 60) return `Còn ${sec} giây`;
+  if (sec < 60) return `Còn ${n(sec)} giây`;
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
-  if (h) return m ? `Còn ${h} giờ ${m} phút` : `Còn ${h} giờ`;
-  return `Còn ${m} phút`;
+  if (h) return m ? `Còn ${n(h)} giờ ${n(m)} phút` : `Còn ${n(h)} giờ`;
+  return `Còn ${n(m)} phút`;
 }
 
 function esc(s) {
@@ -418,8 +436,8 @@ function tick() {
             <button class="bell${off ? " off" : ""}" data-name="${esc(i.name)}" title="${off ? "Đang TẮT chuông — bấm để bật lại" : "Đang bật chuông — bấm để tắt báo boss này"}">${off ? "🔕" : "🔔"}</button>
             <span class="vbtn${vsel ? " set" : ""}" title="Chọn giọng đọc riêng cho boss này">🎙<select data-bvoice="${esc(i.name)}">${voiceOptions(vsel, "Theo server / mặc định")}</select></span>
           </td>
-          <td class="num">${at}${i.tomorrow ? ' <span class="muted small">mai</span>' : ""}</td>
-          <td class="num cd">${fmtCountdown(i.remaining)}</td>
+          <td class="num at">${at}${i.tomorrow ? ' <span class="muted small">mai</span>' : ""}</td>
+          <td class="num cd lvl-${cdLevel(i.remaining)}">${fmtCountdown(i.remaining)}</td>
           <td class="num death">${esc(i.death)}</td>
         </tr>`;
       }).join("");
@@ -427,7 +445,8 @@ function tick() {
       visible.forEach((i, idx) => {
         const tr = tb.rows[idx];
         tr.className = rowClass(i);
-        tr.cells[3].textContent = fmtCountdown(i.remaining);
+        tr.cells[3].className = `num cd lvl-${cdLevel(i.remaining)}`;
+        tr.cells[3].innerHTML = fmtCountdown(i.remaining);
       });
     }
   }
