@@ -81,11 +81,16 @@ td.ctl { white-space: nowrap; padding: 3px 4px; width: 1%; }
   border-radius: 4px; padding: 3px 5px; font-size: 12px; font-family: ui-monospace, Consolas, monospace;
 }
 .colorpick input.hex.bad { border-color: var(--danger); }
-td.cd { font-weight: 700; font-size: 15px; }
+td.at { font-weight: 600; color: #fff; }
+/* Đếm ngược: chữ mỏng, màu dịu; cả chữ và số cùng 1 màu theo thời gian còn lại */
+td.cd { font-weight: 300; font-size: 15px; letter-spacing: .2px; color: #e4e8f0; }
+td.cd .n { font-weight: inherit; color: inherit; }
+td.cd.lvl-w { color: #e4e8f0; }   /* trên 15 phút: trắng */
+td.cd.lvl-m { color: #f2a65a; }   /* 5 – 15 phút: cam */
+td.cd.lvl-r { color: #ff7b7b; }   /* dưới 5 phút: đỏ */
+td.cd.lvl-x { color: #9aa3b5; }   /* đã ra: xám */
 td.death { color: var(--muted); font-size: 13px; }
-tr.soon td.cd { color: var(--warn); }
 tr.imminent { background: #2b1d22; animation: pulse 1s infinite; }
-tr.imminent td.cd, tr.imminent td.name { color: var(--danger); }
 tr.passed { opacity: .5; }
 .empty { text-align: center; padding: 24px; color: var(--muted); }
 .foot { text-align: center; margin-top: 10px; }
