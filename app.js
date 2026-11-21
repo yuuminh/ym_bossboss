@@ -18,6 +18,7 @@ const CONFIG = {
   COL_TIME:  "G",           // Tgian hồi sinh (dạng 12:42:00)
   COL_DEATH: "I",           // Giờ chết gần nhất (dạng 21/11 04:42:00)
 
+  CALL_PHRASE: "Boss boss", // câu hô trước khi đọc tên boss (sửa cách viết nếu nghe chưa đúng ý)
   WARN_SECONDS: 60,         // báo trước bao nhiêu giây (đổi được trên trang)
   REFRESH_SECONDS: 30,      // bao lâu tải lại sheet 1 lần
   LOOKAHEAD_MINUTES: 180,   // chỉ hiện boss sắp ra trong bao nhiêu phút
@@ -32,13 +33,15 @@ const saved = JSON.parse(localStorage.getItem("bossAlarm") || "{}");
 const settings = {
   warn: saved.warn ?? CONFIG.WARN_SECONDS,
   voice: saved.voice ?? true,
-  beep: saved.beep ?? true,
+  beep: saved.beep ?? true,            // nay là: hô "Boss boss"
+  voiceName: saved.voiceName ?? "",
   hidden: new Set(saved.hidden ?? []),
   muted: new Set(saved.muted ?? []),   // boss bị tick "không đọc" (lưu theo tên)
 };
 function saveSettings() {
   localStorage.setItem("bossAlarm", JSON.stringify({
     warn: settings.warn, voice: settings.voice, beep: settings.beep,
+    voiceName: settings.voiceName,
     hidden: [...settings.hidden],
     muted: [...settings.muted],
   }));
@@ -161,29 +164,40 @@ function enableAudio() {
   b.classList.add("on");
 }
 
-function beep(times = 3) {
-  if (!state.audio) return;
-  const ctx = state.audio;
-  for (let i = 0; i < times; i++) {
-    const t = ctx.currentTime + i * 0.35;
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = "square";
-    osc.frequency.value = 880;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
-    osc.connect(g).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.3);
-  }
+/* ---------------- Giọng đọc tiếng Việt ---------------- */
+function viVoices() {
+  if (!("speechSynthesis" in window)) return [];
+  return speechSynthesis.getVoices().filter((v) => /^vi/i.test(v.lang));
 }
+
+function pickVoice() {
+  const list = viVoices();
+  return list.find((v) => v.name === settings.voiceName) || list[0] || null;
+}
+
+function fillVoices() {
+  const sel = $("#voiceSel");
+  const list = viVoices();
+  if (!list.length) {
+    sel.innerHTML = `<option>(máy chưa có giọng Việt)</option>`;
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = list.map((v) => `<option value="${esc(v.name)}">${esc(v.name)}</option>`).join("");
+  sel.value = pickVoice().name;
+}
+
+if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = fillVoices;
 
 function speak(text) {
   if (!("speechSynthesis" in window)) return;
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = "vi-VN";
+  const v = pickVoice();
+  if (v) u.voice = v;
+  u.lang = v ? v.lang : "vi-VN";
   u.rate = 1;
+  u.volume = 1;
   speechSynthesis.speak(u);
 }
 
@@ -196,11 +210,11 @@ function spokenName(name) {
 }
 
 function announce(names) {
-  if (settings.beep) beep(3);
-  if (settings.voice) {
-    const list = names.map(spokenName).join(", ");
-    setTimeout(() => speak(list), settings.beep ? 1100 : 0);
-  }
+  // "Boss boss. T7 Katan" — câu hô thay cho tiếng bíp, rồi đọc tên boss
+  const parts = [];
+  if (settings.beep) parts.push(CONFIG.CALL_PHRASE);
+  if (settings.voice) parts.push(names.map(spokenName).join(", "));
+  if (parts.length) speak(parts.join(". "));
 }
 
 /* ---------------- Vòng lặp mỗi giây ---------------- */
@@ -322,6 +336,8 @@ $("#testBtn").addEventListener("click", () => {
 
 $("#warnSelect").value = String(settings.warn);
 $("#warnSelect").addEventListener("change", (e) => { settings.warn = +e.target.value; saveSettings(); });
+fillVoices();
+$("#voiceSel").addEventListener("change", (e) => { settings.voiceName = e.target.value; saveSettings(); });
 $("#voiceChk").checked = settings.voice;
 $("#voiceChk").addEventListener("change", (e) => { settings.voice = e.target.checked; saveSettings(); });
 $("#beepChk").checked = settings.beep;
