@@ -41,6 +41,7 @@ const settings = {
   voiceByGroup: saved.voiceByGroup ?? {},  // giọng riêng từng server: { T7: "tên giọng" }
   grace: saved.grace ?? CONFIG.PASSED_GRACE_MINUTES,   // boss đã ra, ngắt khỏi đầu bảng sau bao nhiêu phút
   volume: saved.volume ?? 100,                          // âm lượng 0-100
+  look: saved.look ?? CONFIG.LOOKAHEAD_MINUTES,         // hiện boss ra trong bao nhiêu phút tới (0 = tất cả trong ngày)
   colors: saved.colors ?? {},                           // màu từng server: { T7: "#ff6b6b", ... }
   panel: saved.panel ?? true,                           // khung Cài đặt đang mở hay thu gọn
 };
@@ -74,6 +75,7 @@ function saveSettings() {
     voiceName: settings.voiceName,
     grace: settings.grace,
     volume: settings.volume,
+    look: settings.look,
     colors: settings.colors,
     panel: settings.panel,
     hidden: [...settings.hidden],
@@ -386,7 +388,7 @@ function tick() {
   if (toAnnounce.length && state.enabled) announce(toAnnounce);
 
   // Hiển thị
-  const maxSec = CONFIG.LOOKAHEAD_MINUTES * 60;
+  const maxSec = settings.look * 60;
   // Boss đã ra quá thời gian "ngắt" (5/10/15 phút) thì bị cắt khỏi bảng; boss chưa quá thì vẫn giữ.
   // (Boss đã quá giờ nhảy sang giờ ra của ngày mai, chỉ hiện lại khi còn trong khoảng báo trước.)
   const visible = items.filter((i) => (maxSec > 0 ? i.remaining <= maxSec : !i.tomorrow));
@@ -395,7 +397,7 @@ function tick() {
     (i.remaining < 0 ? "passed" : i.remaining <= settings.warn ? "imminent" : i.remaining <= 300 ? "soon" : "") +
     (settings.muted.has(i.name) ? " mutedrow" : "");
   const msg = state.error ||
-    (!visible.length ? (maxSec > 0 ? `Không có boss nào ra trong ${CONFIG.LOOKAHEAD_MINUTES} phút tới` : "Chưa có boss nào (kiểm tra link sheet hoặc đang ẩn hết server)") : null);
+    (!visible.length ? (maxSec > 0 ? `Không có boss nào ra trong ${settings.look / 60} tiếng tới (đổi ở ô "Hiện trước" trong Ẩn/Hiện)` : "Chưa có boss nào (kiểm tra link sheet hoặc đang ẩn hết server)") : null);
   if (msg) {
     tb.innerHTML = `<tr><td class="empty" colspan="5">${esc(msg)}</td></tr>`;
     state.sig = "";
@@ -457,7 +459,8 @@ function renderFilters() {
   ).join("");
   // Chọn màu từng server: nằm trong khung Ẩn/Hiện
   $("#colorPickers").innerHTML = [...state.groups].sort().map((g) =>
-    `<label class="colorpick">${esc(g)} <input type="color" data-color="${esc(g)}" value="${colorOf(g)}"></label>`
+    `<span class="colorpick">${esc(g)} <input type="color" data-color="${esc(g)}" value="${colorOf(g)}">` +
+    `<input type="text" class="hex" data-hex="${esc(g)}" value="${colorOf(g)}" maxlength="7" spellcheck="false" placeholder="#rrggbb" title="Dán mã màu hex, ví dụ #ff6b6b"></span>`
   ).join("");
   renderGroupVoices();
 }
@@ -472,15 +475,45 @@ $("#filters").addEventListener("click", (e) => {
   tick();
 });
 
-$("#colorPickers").addEventListener("input", (e) => {
-  const g = e.target.dataset && e.target.dataset.color;
-  if (!g) return;
-  settings.colors[g] = e.target.value;
+// "#abc" / "ABC" / "#AABBCC" → "#aabbcc"; sai định dạng thì trả về null
+function normHex(v) {
+  let h = (v || "").trim().replace(/^#/, "").toLowerCase();
+  if (/^[0-9a-f]{3}$/.test(h)) h = h.split("").map((c) => c + c).join("");
+  return /^[0-9a-f]{6}$/.test(h) ? "#" + h : null;
+}
+
+function setGroupColor(g, hex, source) {
+  settings.colors[g] = hex;
   saveSettings();
   const chip = $(`#filters .chip[data-g="${CSS.escape(g)}"]`);
   if (chip) chip.setAttribute("style", chipStyle(g));
+  // đồng bộ 2 ô (ô chọn màu và ô gõ mã) với nhau
+  const picker = $(`#colorPickers [data-color="${CSS.escape(g)}"]`);
+  const text = $(`#colorPickers [data-hex="${CSS.escape(g)}"]`);
+  if (picker && source !== "picker") picker.value = hex;
+  if (text && source !== "text") text.value = hex;
+  renderGroupVoices();
   state.sig = "";   // vẽ lại bảng để chữ tên boss đổi màu theo
   tick();
+}
+
+$("#colorPickers").addEventListener("input", (e) => {
+  const d = e.target.dataset || {};
+  if (d.color) {
+    setGroupColor(d.color, e.target.value, "picker");
+  } else if (d.hex) {
+    const hex = normHex(e.target.value);
+    e.target.classList.toggle("bad", !hex && e.target.value.trim() !== "");
+    if (hex) setGroupColor(d.hex, hex, "text");   // gõ / dán đủ mã hợp lệ là áp dụng ngay
+  }
+});
+
+// Rời ô gõ mã: chuẩn hóa lại cho gọn (hoặc trả về màu đang dùng nếu gõ sai)
+$("#colorPickers").addEventListener("change", (e) => {
+  const g = e.target.dataset && e.target.dataset.hex;
+  if (!g) return;
+  e.target.value = normHex(e.target.value) || settings.colors[g];
+  e.target.classList.remove("bad");
 });
 
 /* ---------------- Ẩn / Hiện khung cài đặt ---------------- */
@@ -546,6 +579,9 @@ $("#volRange").addEventListener("input", (e) => {
   $("#volVal").textContent = settings.volume + "%";
   saveSettings();
 });
+$("#lookSel").value = String(settings.look);
+if ($("#lookSel").value !== String(settings.look)) { settings.look = 120; $("#lookSel").value = "120"; }
+$("#lookSel").addEventListener("change", (e) => { settings.look = +e.target.value; saveSettings(); state.sig = ""; tick(); });
 $("#graceSel").value = String(settings.grace);
 $("#graceSel").addEventListener("change", (e) => { settings.grace = +e.target.value; saveSettings(); tick(); });
 $("#warnSelect").value = String(settings.warn);
