@@ -58,8 +58,8 @@ h1 { flex: 0 0 auto !important; }
 table { width: auto; min-width: 560px; border-collapse: collapse; }
 th {
   position: sticky; top: 0; background: var(--card);
-  text-align: left; font-size: 12px; font-weight: 600; color: var(--muted);
-  padding: 5px 8px; border-bottom: 1px solid var(--line);
+  text-align: left; font-size: 15px; font-weight: 700; color: #d6dcea;
+  padding: 7px 8px; border-bottom: 1px solid var(--line);
 }
 td {
   padding: 3px 8px; border-bottom: 1px solid var(--line);
@@ -75,6 +75,17 @@ td.ctl { white-space: nowrap; padding: 3px 4px; width: 1%; }
 .vbtn:hover { opacity: 1; }
 .vbtn select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .voicerow { flex: 1 1 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.prow { flex: 1 1 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.prow input { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font-size: 13px; }
+.prow input[type=checkbox], .prow input[type=range] { padding: 0; }
+.btn.mini { padding: 1px 7px; font-size: 12px; line-height: 1.4; }
+.colorpick { display: inline-flex; align-items: center; gap: 4px; }
+/* nút neo 📌: mờ khi chưa neo, sáng khi đang neo */
+.pin { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 3px; opacity: .3; filter: grayscale(1); }
+.pin:hover { opacity: .8; }
+.pin.on { opacity: 1; filter: none; }
+tr.notime { opacity: .6; }
+tr.pinned { background: rgba(255, 255, 255, .05); box-shadow: inset 3px 0 0 #f2c94c; }
 .colorpick select { max-width: 150px; font-size: 12px; padding: 2px 4px; }
 .colorpick input.hex {
   width: 72px; background: var(--bg); color: var(--text); border: 1px solid var(--line);

@@ -32,7 +32,7 @@ const pad = (n) => String(n).padStart(2, "0");
 const saved = JSON.parse(localStorage.getItem("bossAlarm") || "{}");
 const settings = {
   warn: saved.warn ?? CONFIG.WARN_SECONDS,
-  voice: saved.voice ?? true,
+  voice: saved.voiceOn ?? false,       // ô tick "Đọc tên boss" (mặc định tắt: chỉ hô "Boss Boss")
   beep: saved.beep ?? true,            // nay là: hô "Boss boss"
   voiceName: saved.voiceName ?? "",
   hidden: new Set(saved.hidden ?? []),
@@ -42,18 +42,22 @@ const settings = {
   grace: saved.grace ?? CONFIG.PASSED_GRACE_MINUTES,   // boss đã ra, ngắt khỏi đầu bảng sau bao nhiêu phút
   volume: saved.volume ?? 100,                          // âm lượng 0-100
   look: saved.look ?? CONFIG.LOOKAHEAD_MINUTES,         // hiện boss ra trong bao nhiêu phút tới (0 = tất cả trong ngày)
-  // màu từng server: { T7: "#cfe2f3", ... }. Bản màu mặc định mới (colorsV=2) sẽ thay màu cũ 1 lần
-  colors: saved.colorsV === 2 ? (saved.colors ?? {}) : {},
+  // màu từng server: { T7: "#44c173", ... }. Bản màu mặc định mới (colorsV=3) sẽ thay màu cũ 1 lần
+  colors: saved.colorsV === 3 ? (saved.colors ?? {}) : {},
+  fullCol: saved.fullCol ?? "",                         // cột phụ chứa ngày giờ đầy đủ (không bắt buộc), ví dụ "N"
+  pins: saved.pins ?? {},                             // boss được "neo" 📌: { key: {name, group, h, m, s, death, t} }
   panel: saved.panel ?? true,                           // khung Cài đặt đang mở hay thu gọn
 };
 
 // Bảng màu mặc định, mỗi server được gán 1 màu khác nhau (đổi được bằng ô chọn màu trên nút server)
 const PALETTE = ["#4f8cff", "#ff8a4c", "#3ecf8e", "#e86bd0", "#f2c94c", "#9b7bff", "#2bc4d9", "#ff6b6b"];
 
-// Màu mặc định theo tên server (giống màu dòng trong Google Sheet)
+// Màu mặc định theo tên server
 const DEFAULT_COLORS = {
-  L2: "#f9cb9c", K6: "#f4cccc", T7: "#cfe2f3", L7: "#b6d7a8",
-  K6XL: "#ea9999", L2XL: "#f6b26b", L7XL: "#93c47d",
+  K6: "#d0437c", K6XL: "#ea9999",
+  L2: "#de8f3f", L2XL: "#f6b26b",
+  L7: "#2c85d8", L7XL: "#49cae4",
+  T7: "#44c173",
 };
 
 function colorOf(g) {
@@ -79,13 +83,16 @@ function textOn(hex) {   // chữ đen hay trắng cho dễ đọc trên nền m
 }
 function saveSettings() {
   localStorage.setItem("bossAlarm", JSON.stringify({
-    warn: settings.warn, voice: settings.voice, beep: settings.beep,
+    warn: settings.warn, beep: settings.beep,
+    voiceOn: settings.voice,
     voiceName: settings.voiceName,
     grace: settings.grace,
     volume: settings.volume,
     look: settings.look,
     colors: settings.colors,
-    colorsV: 2,
+    colorsV: 3,
+    pins: settings.pins,
+    fullCol: settings.fullCol,
     panel: settings.panel,
     hidden: [...settings.hidden],
     muted: [...settings.muted],
@@ -96,8 +103,12 @@ function saveSettings() {
 
 const state = {
   bosses: [],            // [{group, name, h, m, s}]
+  noTime: [],            // boss chưa có giờ hợp lệ (cột G lỗi / trống)
   groups: new Set(),
   alerted: new Set(),
+  seen: (() => { try { return JSON.parse(localStorage.getItem("bossSeen") || "{}"); } catch (e) { return {}; } })(),
+  seenSaved: 0,          // lần cuối ghi "boss đã thấy" vào trình duyệt
+  itemsByKey: {},        // boss đang hiện trong bảng (để neo 📌)
   audio: null,
   enabled: false,
   lastFetch: null,
@@ -161,6 +172,63 @@ function parseCSV(text) {
   return rows;
 }
 
+// Đọc NGÀY + giờ từ chữ, ví dụ "22/11/2026 23:26:00", "22/11 23:26", "23:26:00 22/11", "2026-11-22 23:26:00".
+// Không có năm thì lấy năm gần ngày hôm nay nhất. Trả về mili-giây hoặc null.
+function parseFullDate(text) {
+  const s = (text || "").trim();
+  if (!s) return null;
+  let y, mo, d, h, mi, se, m;
+  if ((m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/))) {
+    [y, mo, d, h, mi, se] = [+m[1], +m[2], +m[3], +m[4], +m[5], +(m[6] || 0)];
+  } else if ((m = s.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/))) {
+    [d, mo, y, h, mi, se] = [+m[1], +m[2], m[3] ? +m[3] : null, +m[4], +m[5], +(m[6] || 0)];
+  } else if ((m = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/))) {
+    [h, mi, se, d, mo, y] = [+m[1], +m[2], +(m[3] || 0), +m[4], +m[5], m[6] ? +m[6] : null];
+  } else return null;
+  if (y != null && y < 100) y += 2000;
+  const now = Date.now();
+  let t;
+  if (y == null) {
+    y = new Date().getFullYear();
+    t = new Date(y, mo - 1, d, h, mi, se).getTime();
+    if (t < now - 180 * 86400000) t = new Date(y + 1, mo - 1, d, h, mi, se).getTime();
+    else if (t > now + 180 * 86400000) t = new Date(y - 1, mo - 1, d, h, mi, se).getTime();
+  } else t = new Date(y, mo - 1, d, h, mi, se).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+// 1 ô của sheet → { s: chữ hiển thị, t: mili-giây nếu ô có sẵn NGÀY (kể cả khi định dạng ô chỉ hiện giờ) }
+function cellOf(c) {
+  if (!c) return { s: "", t: null };
+  const v = c.v;
+  let s = c.f != null ? String(c.f) : (v == null || Array.isArray(v) ? "" : String(v));
+  let t = null;
+  if (typeof v === "string" && v.startsWith("Date(")) {
+    const n = (v.match(/\d+/g) || []).map(Number);
+    if (n[0] >= 2000 && n.length >= 6) t = new Date(n[0], n[1], n[2], n[3], n[4], n[5]).getTime();   // tháng trong "Date(...)" tính từ 0
+    if (!s && n.length >= 6) s = `${n[3]}:${pad(n[4])}:${pad(n[5])}`;
+  } else if (Array.isArray(v) && !s) {
+    s = `${v[0]}:${pad(v[1] || 0)}:${pad(v[2] || 0)}`;   // chỉ có giờ trong ngày
+  }
+  return { s: s.trim(), t };
+}
+
+// Lấy toàn bộ dòng của sheet. Ưu tiên JSON (đọc được ngày ẩn trong ô giờ), lỗi thì dùng CSV (chỉ có giờ).
+async function fetchSheetRows(sh) {
+  const base = `https://docs.google.com/spreadsheets/d/${sh.id}/gviz/tq?gid=${sh.gid}&_=${Date.now()}`;
+  try {
+    const res = await fetch(base + "&tqx=out:json", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const txt = await res.text();
+    const j = JSON.parse(txt.slice(txt.indexOf("(") + 1, txt.lastIndexOf(")")));
+    if (j.status === "error" || !j.table) throw new Error("gviz json error");
+    return { rows: j.table.rows.map((r) => (r.c || []).map(cellOf)), mode: "json" };
+  } catch (e) { /* thử lại bằng CSV */ }
+  const res = await fetch(base + "&tqx=out:csv", { cache: "no-store" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return { rows: parseCSV(await res.text()).map((r) => r.map((s) => ({ s: (s || "").trim(), t: null }))), mode: "csv" };
+}
+
 async function loadSheet() {
   const sh = getSheet();
   if (!sh) {
@@ -168,28 +236,44 @@ async function loadSheet() {
     state.error = "Chưa có link Google Sheet — bấm Ẩn/Hiện, dán link vào rồi bấm Lưu";
     return;
   }
-  const url = `https://docs.google.com/spreadsheets/d/${sh.id}/gviz/tq?tqx=out:csv&gid=${sh.gid}&_=${Date.now()}`;
   try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const rows = parseCSV(await res.text());
+    const { rows, mode } = await fetchSheetRows(sh);
     const iG = colIndex(CONFIG.COL_GROUP), iN = colIndex(CONFIG.COL_NAME), iT = colIndex(CONFIG.COL_TIME);
     const iD = colIndex(CONFIG.COL_DEATH);
+    const fc = /^[A-Za-z]{1,2}$/.test(settings.fullCol || "") ? colIndex(settings.fullCol) : -1;   // cột phụ chứa ngày giờ đầy đủ (không bắt buộc)
+    const empty = { s: "", t: null };
     const bosses = [];
+    const noTime = [];   // dòng có tên boss nhưng cột giờ lỗi/trống (#VALUE!, ...) — chỉ hiện khi chọn "Hiện trước: Tất cả"
+    let dated = 0;
     for (const r of rows) {
-      const t = (r[iT] || "").trim();
-      const m = t.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-      const name = (r[iN] || "").trim();
-      if (!m || !name) continue;
-      bosses.push({
-        group: groupOf(name, (r[iG] || "").trim()),
-        name,
-        h: +m[1], m: +m[2], s: +(m[3] || 0),
-        death: (r[iD] || "").trim(),
-      });
+      const cT = r[iT] || empty;
+      const name = (r[iN] || empty).s;
+      const grp = (r[iG] || empty).s;
+      const death = (r[iD] || empty).s;
+      if (!name) continue;
+      // ngày: (1) ô G có sẵn ngày  (2) cột phụ  (3) chữ trong ô G có kèm ngày
+      let t = cT.t;
+      if (t == null && fc >= 0) t = parseFullDate((r[fc] || empty).s);
+      if (t == null) t = parseFullDate(cT.s);
+      let h, mi, se;
+      if (t != null) {
+        const d = new Date(t); h = d.getHours(); mi = d.getMinutes(); se = d.getSeconds();
+      } else {
+        const m = cT.s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        if (!m) {
+          if (name.includes("-")) noTime.push({ group: groupOf(name, grp), name, death });
+          continue;
+        }
+        [h, mi, se] = [+m[1], +m[2], +(m[3] || 0)];
+      }
+      if (t != null) dated++;
+      bosses.push({ group: groupOf(name, grp), name, h, m: mi, s: se, t, death });
     }
     state.bosses = bosses;
-    state.groups = new Set(bosses.map((b) => b.group));
+    state.noTime = noTime;
+    state.dated = dated;
+    state.mode = mode;
+    state.groups = new Set([...bosses, ...noTime].map((b) => b.group));
     state.lastFetch = new Date();
     state.error = bosses.length ? null : "Đọc được sheet nhưng không thấy dòng nào có giờ hợp lệ (kiểm tra cột/GID)";
     renderFilters();
@@ -200,6 +284,7 @@ async function loadSheet() {
 
 /* ---------------- Âm thanh ---------------- */
 function enableAudio() {
+  if (state.enabled) return;
   if (!state.audio) {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     state.audio = new Ctx();
@@ -219,6 +304,12 @@ function enableAudio() {
   b.classList.remove("primary");
   b.classList.add("on");
 }
+
+// Trình duyệt chỉ cho phát tiếng sau 1 lần người dùng chạm/bấm vào trang.
+// Nên âm thanh tự bật ở lần chạm / bấm phím / đăng nhập đầu tiên, không cần bấm nút "Bật âm thanh".
+["pointerdown", "keydown", "touchstart"].forEach((ev) =>
+  document.addEventListener(ev, () => enableAudio(), { capture: true, passive: true })
+);
 
 /* ---------------- Giọng đọc tiếng Việt ---------------- */
 // Tất cả giọng trong máy, giọng tiếng Việt xếp lên đầu
@@ -269,8 +360,9 @@ function renderGroupVoices() {
   const box = $("#groupVoices");
   if (!box) return;
   box.innerHTML = [...state.groups].sort().map((g) =>
-    `<label class="colorpick" style="color:${colorOf(g)}">${esc(g)} ` +
-    `<select data-gvoice="${esc(g)}">${voiceOptions(settings.voiceByGroup[g], "Mặc định")}</select></label>`
+    `<span class="colorpick" style="color:${colorOf(g)}">${esc(g)} ` +
+    `<select data-gvoice="${esc(g)}">${voiceOptions(settings.voiceByGroup[g], "Mặc định")}</select>` +
+    `<button class="btn mini" data-gplay="${esc(g)}" title="Nghe thử giọng của ${esc(g)}">▶</button></span>`
   ).join("") || '<span class="muted small">(có sheet rồi sẽ hiện)</span>';
 }
 
@@ -362,8 +454,11 @@ function cdLevel(sec) {
 function fmtCountdown(sec) {
   const n = (v) => `<span class="n">${v}</span>`;
   if (sec < 0) {
-    const m = Math.floor(-sec / 60);
-    return m < 1 ? "Vừa ra" : `Đã ra ${n(m)} phút`;
+    const t = Math.floor(-sec / 60);
+    if (t < 1) return "Vừa ra";
+    const h = Math.floor(t / 60), m = t % 60;
+    if (h) return m ? `Đã ra ${n(h)} giờ ${n(m)} phút` : `Đã ra ${n(h)} giờ`;
+    return `Đã ra ${n(t)} phút`;
   }
   if (sec < 60) return `Còn ${n(sec)} giây`;
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
@@ -375,27 +470,51 @@ function esc(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Ghi nhớ boss đã thấy (để giữ lại dù sheet đổi dòng ngay lúc boss ra)
+function saveSeen(force) {
+  const t = Date.now();
+  if (!force && t - state.seenSaved < 15000) return;
+  state.seenSaved = t;
+  try { localStorage.setItem("bossSeen", JSON.stringify(state.seen)); } catch (e) {}
+}
+
 function tick() {
   const now = new Date();
+  const nowMs = now.getTime();
   $("#clock").textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
   const graceMs = settings.grace * 60000;
   const items = [];
+  const have = new Set();
   for (const b of state.bosses) {
     if (settings.hidden.has(b.group)) continue;
-    const target = new Date(now);
-    target.setHours(b.h, b.m, b.s, 0);
-    if (target - now < -graceMs) target.setDate(target.getDate() + 1); // đã qua lâu → lần ra kế tiếp (mai)
+    let target, stale = false;
+    if (b.t != null) {
+      // sheet có NGÀY chính xác → dùng đúng ngày giờ đó, không đoán
+      target = new Date(b.t);
+      stale = target - now < -graceMs;   // đã ra quá thời gian ngắt mà sheet chưa cập nhật
+    } else {
+      // sheet chỉ có giờ → lấy lần gần nhất; đã qua quá thời gian ngắt thì sang giờ này của ngày mai
+      target = new Date(now);
+      target.setHours(b.h, b.m, b.s, 0);
+      if (target - now < -graceMs) target.setDate(target.getDate() + 1);
+    }
     const remaining = Math.round((target - now) / 1000);
-    items.push({
-      ...b, target, remaining,
+    const it = {
+      ...b, target, remaining, stale,
       tomorrow: target.getDate() !== now.getDate(),
       key: `${b.name}|${target.toDateString()}|${b.h}:${b.m}:${b.s}`,
-    });
+    };
+    items.push(it);
+    have.add(it.key);
+    // nhớ boss sắp ra (trong 2 tiếng) hoặc vừa ra, kèm lần cuối còn thấy trong sheet
+    if (remaining <= 7200 && target - now >= -graceMs) {
+      state.seen[it.key] = { name: b.name, group: b.group, h: b.h, m: b.m, s: b.s, death: b.death, t: target.getTime(), l: nowMs };
+    }
   }
-  items.sort((a, b) => a.remaining - b.remaining);
+  items.sort((a, b) => (a.stale ? 1 : 0) - (b.stale ? 1 : 0) || a.remaining - b.remaining);
 
-  // Báo động
+  // Báo động (chỉ boss đang có trong sheet)
   const toAnnounce = [];
   for (const it of items) {
     if (it.remaining <= settings.warn && it.remaining > -30 && !state.alerted.has(it.key)) {
@@ -405,26 +524,75 @@ function tick() {
   }
   if (toAnnounce.length && state.enabled) announce(toAnnounce);
 
+  // Boss không còn trong sheet nhưng vẫn phải giữ:
+  //  - boss đã neo 📌 → giữ đến khi bỏ neo
+  //  - boss vừa ra mà sheet đổi dòng ngay lúc đó → giữ đủ thời gian "ngắt" (5/10/15 phút)
+  const extras = [];
+  const addExtra = (key, s, pinned) => {
+    if (have.has(key) || settings.hidden.has(s.group)) return;
+    have.add(key);
+    extras.push({
+      name: s.name, group: s.group, h: s.h, m: s.m, s: s.s, death: s.death || "",
+      target: new Date(s.t), remaining: Math.round((s.t - nowMs) / 1000),
+      tomorrow: false, ghost: true, key,
+    });
+  };
+  for (const [key, s] of Object.entries(settings.pins)) {
+    if (s.t < nowMs - 12 * 3600 * 1000) { delete settings.pins[key]; continue; }   // neo quá 12 tiếng thì tự bỏ
+    addExtra(key, s, true);
+  }
+  for (const [key, s] of Object.entries(state.seen)) {
+    const rem = s.t - nowMs;
+    if (rem < -graceMs - 60000 && !settings.pins[key]) { delete state.seen[key]; continue; }   // quá hạn, dọn
+    // chỉ giữ nếu boss đã tới giờ và trước đó sheet còn liệt kê nó sát giờ ra (tức là nó ra thật, không phải bị sửa/kill)
+    if (rem <= 0 && rem >= -graceMs && s.l >= s.t - 60000) addExtra(key, s, false);
+  }
+  const all = items.concat(extras);
+  // nhãn ngày cạnh giờ: "" = hôm nay, "mai" = ngày mai, còn lại hiện dd/mm
+  const today0 = new Date(now); today0.setHours(0, 0, 0, 0);
+  const dayLabel = (d) => {
+    const d0 = new Date(d); d0.setHours(0, 0, 0, 0);
+    const diff = Math.round((d0 - today0) / 86400000);
+    return diff === 0 ? "" : diff === 1 ? "mai" : `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+  };
+  all.forEach((i) => { i.pinned = !!settings.pins[i.key]; i.day = dayLabel(i.target); });
+  all.sort((a, b) => (a.stale ? 1 : 0) - (b.stale ? 1 : 0) || a.remaining - b.remaining);
+  state.itemsByKey = {};
+  all.forEach((i) => { state.itemsByKey[i.key] = i; });
+  saveSeen(false);
+
   // Hiển thị
   const maxSec = settings.look * 60;
-  // Boss đã ra quá thời gian "ngắt" (5/10/15 phút) thì bị cắt khỏi bảng; boss chưa quá thì vẫn giữ.
-  // (Boss đã quá giờ nhảy sang giờ ra của ngày mai, chỉ hiện lại khi còn trong khoảng báo trước.)
-  const visible = items.filter((i) => (maxSec > 0 ? i.remaining <= maxSec : !i.tomorrow));
+  // Boss đã ra quá thời gian "ngắt" thì bị cắt khỏi bảng (trừ boss neo 📌); boss chưa quá thì vẫn giữ.
+  // "Hiện trước: Tất cả" = hiện mọi boss, kể cả boss đã bị ngắt (nằm cuối bảng, giờ ra của ngày mai).
+  const visible = all.filter((i) => i.pinned || i.ghost || maxSec === 0 || (!i.stale && i.remaining <= maxSec));
   const tb = $("#list");
   const rowClass = (i) =>
     (i.remaining < 0 ? "passed" : i.remaining <= settings.warn ? "imminent" : i.remaining <= 300 ? "soon" : "") +
-    (settings.muted.has(i.name) ? " mutedrow" : "");
+    (i.pinned ? " pinned" : "");
+  // "Hiện trước: Tất cả" → hiện luôn cả boss chưa có giờ (cột G lỗi / trống) ở cuối bảng
+  const noTimeRows = maxSec === 0 ? state.noTime.filter((n) => !settings.hidden.has(n.group)) : [];
   const msg = state.error ||
-    (!visible.length ? (maxSec > 0 ? `Không có boss nào ra trong ${settings.look / 60} tiếng tới (đổi ở ô "Hiện trước" trong Ẩn/Hiện)` : "Chưa có boss nào (kiểm tra link sheet hoặc đang ẩn hết server)") : null);
+    (!visible.length && !noTimeRows.length ? (maxSec > 0 ? `Không có boss nào ra trong ${settings.look / 60} tiếng tới (đổi ở ô "Hiện trước" trong Ẩn/Hiện)` : "Chưa có boss nào (kiểm tra link sheet hoặc đang ẩn hết server)") : null);
   if (msg) {
     tb.innerHTML = `<tr><td class="empty" colspan="5">${esc(msg)}</td></tr>`;
     state.sig = "";
   } else {
     // Chỉ dựng lại bảng khi danh sách đổi; còn lại chỉ cập nhật số đếm ngược
-    // (để click vào ô tick không bị mất do bảng bị vẽ lại mỗi giây)
-    const sig = visible.map((i) => i.key + (settings.muted.has(i.name) ? "1" : "0") + (settings.voiceByBoss[i.name] || "")).join("#");
+    // (để click không bị mất do bảng bị vẽ lại mỗi giây)
+    const sig = visible.map((i) => i.key + i.day +(settings.muted.has(i.name) ? "1" : "0") + (i.pinned ? "P" : "") + (settings.voiceByBoss[i.name] || "")).join("#") + "|" + noTimeRows.map((n) => n.name + (settings.muted.has(n.name) ? "1" : "0")).join("#");
     if (sig !== state.sig) {
       state.sig = sig;
+      const noTimeHtml = noTimeRows.map((n) => {
+        const off = settings.muted.has(n.name);
+        return `<tr class="notime">
+          <td class="name" style="color:${colorOf(n.group)}">${esc(n.name)}</td>
+          <td class="ctl"><button class="bell${off ? " off" : ""}" data-name="${esc(n.name)}" title="${off ? "Đang TẮT chuông — bấm để bật lại" : "Đang bật chuông — bấm để tắt báo boss này"}">${off ? "🔕" : "🔔"}</button></td>
+          <td class="num at">—</td>
+          <td class="num cd lvl-x">Chưa có giờ</td>
+          <td class="num death">${esc(n.death)}</td>
+        </tr>`;
+      }).join("");
       tb.innerHTML = visible.map((i) => {
         const at = `${pad(i.h)}:${pad(i.m)}:${pad(i.s)}`;
         const c = colorOf(i.group);   // màu chữ của server (trùng màu nút server)
@@ -434,13 +602,14 @@ function tick() {
           <td class="name" style="color:${c}">${esc(i.name)}</td>
           <td class="ctl">
             <button class="bell${off ? " off" : ""}" data-name="${esc(i.name)}" title="${off ? "Đang TẮT chuông — bấm để bật lại" : "Đang bật chuông — bấm để tắt báo boss này"}">${off ? "🔕" : "🔔"}</button>
+            <button class="pin${i.pinned ? " on" : ""}" data-key="${esc(i.key)}" title="${i.pinned ? "Đang NEO — boss không bị ngắt. Bấm để bỏ neo" : "Neo boss lại (không bị ngắt) để đánh sau"}">📌</button>
             <span class="vbtn${vsel ? " set" : ""}" title="Chọn giọng đọc riêng cho boss này">🎙<select data-bvoice="${esc(i.name)}">${voiceOptions(vsel, "Theo server / mặc định")}</select></span>
           </td>
-          <td class="num at">${at}${i.tomorrow ? ' <span class="muted small">mai</span>' : ""}</td>
+          <td class="num at">${at}${i.day ? ` <span class="muted small">${i.day}</span>` : ""}</td>
           <td class="num cd lvl-${cdLevel(i.remaining)}">${fmtCountdown(i.remaining)}</td>
           <td class="num death">${esc(i.death)}</td>
         </tr>`;
-      }).join("");
+      }).join("") + noTimeHtml;
     } else {
       visible.forEach((i, idx) => {
         const tr = tb.rows[idx];
@@ -458,8 +627,11 @@ function tick() {
   // Dọn key cũ
   if (state.alerted.size > 500) state.alerted.clear();
 
+  const nt = state.noTime.length;
   $("#status").textContent = state.lastFetch
-    ? `Cập nhật sheet lúc ${state.lastFetch.toLocaleTimeString("vi-VN")} · hiện ${visible.length}/${state.bosses.length} boss`
+    ? `Cập nhật sheet lúc ${state.lastFetch.toLocaleTimeString("vi-VN")} · hiện ${visible.length}/${state.bosses.length} boss có giờ` +
+      ` · ${state.dated}/${state.bosses.length} boss có ngày` +
+      (nt ? ` · ${nt} boss chưa có giờ${maxSec === 0 ? " (đang hiện ở cuối bảng)" : ' (chọn "Hiện trước: Tất cả" để xem)'}` : "")
     : "Đang tải sheet…";
 }
 
@@ -545,8 +717,22 @@ function setPanel(open) {
 $("#settingsBtn").addEventListener("click", () => setPanel(!settings.panel));
 setPanel(settings.panel);
 
-// Bấm chuông 🔔 sau tên boss: tắt / bật báo cho boss đó
+// Bấm chuông 🔔 sau tên boss: tắt / bật báo cho boss đó.
+// Bấm ghim 📌: neo boss lại, không bị ngắt (để đánh sau); bấm lần nữa để bỏ neo.
 $("#list").addEventListener("click", (e) => {
+  const pin = e.target.closest(".pin");
+  if (pin) {
+    const key = pin.dataset.key;
+    if (settings.pins[key]) {
+      delete settings.pins[key];
+    } else {
+      const it = state.itemsByKey[key];
+      if (it) settings.pins[key] = { name: it.name, group: it.group, h: it.h, m: it.m, s: it.s, death: it.death, t: it.target.getTime() };
+    }
+    saveSettings();
+    tick();
+    return;
+  }
   const bell = e.target.closest(".bell");
   if (!bell) return;
   const name = bell.dataset.name;
@@ -576,9 +762,16 @@ $("#groupVoices").addEventListener("change", (e) => {
   previewVoice(null, g, e.target.value);
 });
 
+// Bấm ▶ cạnh ô chọn giọng của server để nghe thử
+$("#groupVoices").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-gplay]");
+  if (b) previewVoice(null, b.dataset.gplay);
+});
+
 // Đọc thử ngay khi vừa chọn giọng, để nghe luôn
 function previewVoice(bossName, group, voiceName) {
-  if (!state.enabled || !("speechSynthesis" in window)) return;
+  if (!state.enabled) enableAudio();
+  if (!("speechSynthesis" in window)) return;
   const sample = bossName || state.bosses.find((b) => b.group === group)?.name || "T7-Katan";
   const g = group || (state.bosses.find((b) => b.name === bossName) || {}).group;
   speechSynthesis.cancel();
@@ -587,7 +780,7 @@ function previewVoice(bossName, group, voiceName) {
 
 $("#enableBtn").addEventListener("click", enableAudio);
 $("#testBtn").addEventListener("click", () => {
-  if (!state.enabled) enableAudio();
+  enableAudio();
   announce([{ name: "T7-Cruma Ô Uế", group: "T7" }]);
 });
 
@@ -597,6 +790,15 @@ $("#volRange").addEventListener("input", (e) => {
   settings.volume = +e.target.value;
   $("#volVal").textContent = settings.volume + "%";
   saveSettings();
+});
+$("#fullCol").value = settings.fullCol;
+$("#fullCol").addEventListener("change", async (e) => {
+  settings.fullCol = e.target.value.trim().toUpperCase();
+  e.target.value = settings.fullCol;
+  saveSettings();
+  await loadSheet();
+  state.sig = "";
+  tick();
 });
 $("#lookSel").value = String(settings.look);
 if ($("#lookSel").value !== String(settings.look)) { settings.look = 120; $("#lookSel").value = "120"; }
@@ -684,6 +886,7 @@ function startApp() {
 
 $("#loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
+  enableAudio();   // bấm đăng nhập là 1 lần chạm → bật âm thanh luôn
   const err = $("#loginErr");
   err.textContent = "";
   try {

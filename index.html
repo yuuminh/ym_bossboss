@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Boss Alarm</title>
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
   <!-- Màn hình đăng nhập -->
@@ -39,43 +39,60 @@
       </div>
       <div id="sheetMsg" class="small"></div>
 
-      <label>Báo trước
-        <select id="warnSelect">
-          <option value="30">30 giây</option>
-          <option value="60">1 phút</option>
-          <option value="90">1 phút 30</option>
-          <option value="120">2 phút</option>
-          <option value="180">3 phút</option>
-        </select>
-      </label>
-      <label>Hiện trước
-        <select id="lookSel">
-          <option value="60">1 tiếng</option>
-          <option value="120">2 tiếng</option>
-          <option value="180">3 tiếng</option>
-          <option value="360">6 tiếng</option>
-          <option value="0">Tất cả (trong ngày)</option>
-        </select>
-      </label>
-      <label>Ngắt boss đã ra sau
-        <select id="graceSel">
-          <option value="5">5 phút</option>
-          <option value="10">10 phút</option>
-          <option value="15">15 phút</option>
-        </select>
-      </label>
-      <label><input type="checkbox" id="beepChk"> Hô "Boss Boss" (giọng nữ)</label>
-      <label><input type="checkbox" id="voiceChk"> Đọc tên boss</label>
-      <label>Giọng đọc tên <select id="voiceSel"><option>…</option></select></label>
-      <label>🔊 Âm lượng
-        <input type="range" id="volRange" min="0" max="100" step="5" style="width:90px;vertical-align:middle;accent-color:#4f8cff">
-        <span id="volVal" class="muted small">100%</span>
-      </label>
-      <button id="testBtn" class="btn">▶ Thử</button>
-      <span class="sep"></span>
-      <span class="muted">Màu chữ server:</span>
-      <span id="colorPickers" class="colorpicks"></span>
-      <div class="voicerow">
+      <div class="prow">
+        <label title="Không bắt buộc. Trang tự đọc ngày ẩn trong cột G; nếu thấy dòng trạng thái ghi '0 boss có ngày' thì thêm 1 cột phụ trong sheet rồi nhập chữ cái cột đó vào đây">Cột ngày giờ đầy đủ (không bắt buộc)
+          <input id="fullCol" maxlength="2" size="3" placeholder="vd: N" spellcheck="false" style="width:46px;text-transform:uppercase">
+        </label>
+      </div>
+
+      <div class="prow">
+        <label>Báo trước
+          <select id="warnSelect">
+            <option value="30">30 giây</option>
+            <option value="60">1 phút</option>
+            <option value="90">1 phút 30</option>
+            <option value="120">2 phút</option>
+            <option value="180">3 phút</option>
+          </select>
+        </label>
+        <label>Hiện trước
+          <select id="lookSel">
+            <option value="60">1 tiếng</option>
+            <option value="120">2 tiếng</option>
+            <option value="180">3 tiếng</option>
+            <option value="360">6 tiếng</option>
+            <option value="0">Tất cả</option>
+          </select>
+        </label>
+        <label>Ngắt boss đã ra sau
+          <select id="graceSel">
+            <option value="5">5 phút</option>
+            <option value="10">10 phút</option>
+            <option value="15">15 phút</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="prow">
+        <label><input type="checkbox" id="beepChk"> Hô "Boss Boss" (giọng nữ)</label>
+        <button id="testBtn" class="btn">▶ Thử</button>
+        <label>🔊 Âm lượng
+          <input type="range" id="volRange" min="0" max="100" step="5" style="width:110px;vertical-align:middle;accent-color:#4f8cff">
+          <span id="volVal" class="muted small">100%</span>
+        </label>
+      </div>
+
+      <div class="prow">
+        <label><input type="checkbox" id="voiceChk"> Đọc tên boss</label>
+        <label>Giọng đọc tên <select id="voiceSel"><option>…</option></select></label>
+      </div>
+
+      <div class="prow">
+        <span class="muted">Màu chữ server:</span>
+        <span id="colorPickers" class="colorpicks"></span>
+      </div>
+
+      <div class="prow">
         <span class="muted">Giọng theo server:</span>
         <span id="groupVoices" class="colorpicks"></span>
         <span class="muted small">(giọng riêng từng boss: bấm 🎙 sau tên boss)</span>
@@ -87,7 +104,7 @@
       <thead>
         <tr>
           <th>Tên boss</th>
-          <th class="ctl" title="🔔 bật/tắt chuông báo · 🎙 giọng đọc riêng"></th>
+          <th class="ctl" title="🔔 bật/tắt chuông báo · 📌 neo boss (không bị ngắt) · 🎙 giọng đọc riêng"></th>
           <th class="num">Time ra</th>
           <th class="num">Đếm ngược</th>
           <th class="num">Time chết</th>
@@ -99,6 +116,6 @@
     <p class="muted small foot">Giữ tab này mở. Lần đầu phải bấm "Bật âm thanh" thì trình duyệt mới cho phát tiếng.</p>
   </div>
 
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
