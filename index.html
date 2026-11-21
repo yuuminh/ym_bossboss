@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Boss Alarm</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Màn hình đăng nhập -->
+  <div id="login" class="login">
+    <h1>⚔️ Boss Alarm</h1>
+    <form id="loginForm">
+      <input id="u" placeholder="Tài khoản" autocomplete="username" required>
+      <input id="p" type="password" placeholder="Mật khẩu" autocomplete="current-password" required>
+      <button class="btn primary" type="submit">Đăng nhập</button>
+      <div id="loginErr" class="err small"></div>
+    </form>
+  </div>
+
+  <!-- Giao diện chính (ẩn cho đến khi đăng nhập) -->
+  <div id="app" hidden>
+    <header>
+      <h1>⚔️ Boss Alarm</h1>
+      <div id="clock" class="clock">--:--:--</div>
+      <button id="enableBtn" class="btn primary">🔔 Bật âm thanh</button>
+      <button id="logoutBtn" class="btn" title="Đăng xuất">⎋</button>
+    </header>
+
+    <section class="panel">
+      <div class="sheetrow">
+        <span class="muted">📄 Sheet</span>
+        <input id="sheetLink" placeholder="Dán link Google Sheet vào đây" spellcheck="false">
+        <button id="sheetSave" class="btn">Lưu</button>
+      </div>
+      <div id="sheetMsg" class="small"></div>
+
+      <label>Báo trước
+        <select id="warnSelect">
+          <option value="30">30 giây</option>
+          <option value="60">1 phút</option>
+          <option value="90">1 phút 30</option>
+          <option value="120">2 phút</option>
+          <option value="180">3 phút</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="voiceChk"> Giọng đọc</label>
+      <label><input type="checkbox" id="beepChk"> Bíp</label>
+      <button id="testBtn" class="btn">🔊 Thử</button>
+      <span class="sep"></span>
+      <div id="filters" class="chips"></div>
+      <span id="status" class="muted small"></span>
+    </section>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Tên boss</th>
+          <th class="num">Time ra</th>
+          <th class="num">Đếm ngược</th>
+          <th class="num">Time chết</th>
+          <th class="mute" title="Tick để không báo boss này">Không đọc</th>
+        </tr>
+      </thead>
+      <tbody id="list"></tbody>
+    </table>
+
+    <p class="muted small foot">Giữ tab này mở. Lần đầu phải bấm "Bật âm thanh" thì trình duyệt mới cho phát tiếng.</p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tạo tài khoản Boss Alarm</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0f1218; color: #e8ecf4; max-width: 560px; margin: 30px auto; padding: 0 16px; }
+  input, button { font-size: 15px; padding: 8px 10px; border-radius: 8px; border: 1px solid #2a3142; background: #1a1f2b; color: #e8ecf4; }
+  button { background: #4f8cff; border-color: #4f8cff; cursor: pointer; font-weight: 600; }
+  .row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  input { flex: 1; min-width: 140px; }
+  pre { background: #1a1f2b; border: 1px solid #2a3142; border-radius: 8px; padding: 12px; white-space: pre-wrap; word-break: break-all; }
+  .muted { color: #8b95ab; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h2>Tạo tài khoản Boss Alarm</h2>
+  <p class="muted">Nhập tài khoản + mật khẩu, bấm Tạo, rồi copy dòng kết quả dán vào mảng <code>USERS</code> trong <code>app.js</code>. Trang này chạy trong trình duyệt, không gửi gì đi đâu cả. Không cần upload file này lên GitHub.</p>
+  <div class="row">
+    <input id="u" placeholder="Tài khoản">
+    <input id="p" placeholder="Mật khẩu">
+    <button id="go">Tạo</button>
+  </div>
+  <pre id="out">…</pre>
+<script>
+  async function sha256(s) {
+    const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+    return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+  }
+  document.getElementById("go").onclick = async () => {
+    const u = document.getElementById("u").value.trim().toLowerCase();
+    const p = document.getElementById("p").value;
+    if (!u || !p) return;
+    const h = await sha256(u + ":" + p);
+    document.getElementById("out").textContent = `{ user: "${u}", hash: "${h}" },`;
+  };
+</script>
+</body>
+</html>
