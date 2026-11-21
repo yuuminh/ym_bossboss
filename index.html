@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Boss Alarm</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
   <!-- Màn hình đăng nhập -->
@@ -44,9 +44,16 @@
           <option value="180">3 phút</option>
         </select>
       </label>
-      <label><input type="checkbox" id="beepChk"> Hô "Boss boss"</label>
+      <label>Ngắt boss đã ra sau
+        <select id="graceSel">
+          <option value="5">5 phút</option>
+          <option value="10">10 phút</option>
+          <option value="15">15 phút</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="beepChk"> Hô "Boss Boss" (giọng nữ)</label>
       <label><input type="checkbox" id="voiceChk"> Đọc tên boss</label>
-      <label>Giọng <select id="voiceSel"><option>…</option></select></label>
+      <label>Giọng đọc tên <select id="voiceSel"><option>…</option></select></label>
       <button id="testBtn" class="btn">🔊 Thử</button>
       <span class="sep"></span>
       <div id="filters" class="chips"></div>
@@ -69,6 +76,6 @@
     <p class="muted small foot">Giữ tab này mở. Lần đầu phải bấm "Bật âm thanh" thì trình duyệt mới cho phát tiếng.</p>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

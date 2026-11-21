@@ -18,11 +18,11 @@ const CONFIG = {
   COL_TIME:  "G",           // Tgian hồi sinh (dạng 12:42:00)
   COL_DEATH: "I",           // Giờ chết gần nhất (dạng 21/11 04:42:00)
 
-  CALL_PHRASE: "Boss boss", // câu hô trước khi đọc tên boss (sửa cách viết nếu nghe chưa đúng ý)
+  CALL_PHRASE: "Boss Boss!", // câu hô (giọng nữ tiếng Anh, hô 2 lần như file ALRMCLOCK)
   WARN_SECONDS: 60,         // báo trước bao nhiêu giây (đổi được trên trang)
   REFRESH_SECONDS: 30,      // bao lâu tải lại sheet 1 lần
-  LOOKAHEAD_MINUTES: 180,   // chỉ hiện boss sắp ra trong bao nhiêu phút
-  PASSED_GRACE_MINUTES: 5,  // boss đã ra vẫn hiện thêm bao nhiêu phút
+  LOOKAHEAD_MINUTES: 0,     // chỉ hiện boss ra trong bao nhiêu phút tới (0 = hiện HẾT danh sách)
+  PASSED_GRACE_MINUTES: 10, // mặc định: boss đã ra vẫn ở đầu bảng bao nhiêu phút (chọn 5/10/15 ngay trên trang)
 };
 /* =============================================================== */
 
@@ -37,11 +37,13 @@ const settings = {
   voiceName: saved.voiceName ?? "",
   hidden: new Set(saved.hidden ?? []),
   muted: new Set(saved.muted ?? []),   // boss bị tick "không đọc" (lưu theo tên)
+  grace: saved.grace ?? CONFIG.PASSED_GRACE_MINUTES,   // boss đã ra, ngắt khỏi đầu bảng sau bao nhiêu phút
 };
 function saveSettings() {
   localStorage.setItem("bossAlarm", JSON.stringify({
     warn: settings.warn, voice: settings.voice, beep: settings.beep,
     voiceName: settings.voiceName,
+    grace: settings.grace,
     hidden: [...settings.hidden],
     muted: [...settings.muted],
   }));
@@ -209,12 +211,49 @@ function spokenName(name) {
   return name.replace(/-/g, " ");
 }
 
+// Câu hô "Boss Boss!" — giống file ALRMCLOCK_v5: giọng nữ tiếng Anh, pitch cao
+function englishFemaleVoice() {
+  const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
+  return voices.find((v) => /zira|samantha|karen|moira|susan|victoria|fiona|tessa/i.test(v.name)) || voices[0] || null;
+}
+
+function sayBoss() {
+  const u = new SpeechSynthesisUtterance(CONFIG.CALL_PHRASE);
+  u.lang = "en-US";
+  const v = englishFemaleVoice();
+  if (v) u.voice = v;
+  u.pitch = 1.8;
+  u.rate = 1.1;
+  u.volume = 1;
+  speechSynthesis.speak(u);
+}
+
+// Dự phòng nếu trình duyệt không có giọng nói: "ding ding"
+function playDing() {
+  const ctx = state.audio;
+  if (!ctx) return;
+  [0, 0.9].forEach((d) => {
+    const t = ctx.currentTime + d;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    g.gain.setValueAtTime(1, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.8);
+  });
+}
+
 function announce(names) {
-  // "Boss boss. T7 Katan" — câu hô thay cho tiếng bíp, rồi đọc tên boss
-  const parts = [];
-  if (settings.beep) parts.push(CONFIG.CALL_PHRASE);
-  if (settings.voice) parts.push(names.map(spokenName).join(", "));
-  if (parts.length) speak(parts.join(". "));
+  const synth = "speechSynthesis" in window;
+  if (synth) speechSynthesis.resume();
+  if (settings.beep) {
+    if (synth) { sayBoss(); sayBoss(); } else playDing();   // "Boss Boss! Boss Boss!"
+  }
+  // rồi đọc tên boss bằng giọng tiếng Việt (các câu tự xếp hàng nói lần lượt)
+  if (settings.voice && synth) speak(names.map(spokenName).join(", "));
 }
 
 /* ---------------- Vòng lặp mỗi giây ---------------- */
@@ -222,6 +261,18 @@ function fmt(sec) {
   const a = Math.abs(sec);
   const h = Math.floor(a / 3600), m = Math.floor((a % 3600) / 60), s = a % 60;
   return (sec < 0 ? "-" : "") + (h ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`);
+}
+
+// Chữ hiển thị ở cột Đếm ngược: "Còn 5 phút", "Còn 1 giờ 4 phút", "Đã ra 3 phút"
+function fmtCountdown(sec) {
+  if (sec < 0) {
+    const m = Math.floor(-sec / 60);
+    return m < 1 ? "Vừa ra" : `Đã ra ${m} phút`;
+  }
+  if (sec < 60) return `Còn ${sec} giây`;
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  if (h) return m ? `Còn ${h} giờ ${m} phút` : `Còn ${h} giờ`;
+  return `Còn ${m} phút`;
 }
 
 function esc(s) {
@@ -232,7 +283,7 @@ function tick() {
   const now = new Date();
   $("#clock").textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-  const graceMs = CONFIG.PASSED_GRACE_MINUTES * 60000;
+  const graceMs = settings.grace * 60000;
   const items = [];
   for (const b of state.bosses) {
     if (settings.hidden.has(b.group)) continue;
@@ -240,7 +291,11 @@ function tick() {
     target.setHours(b.h, b.m, b.s, 0);
     if (target - now < -graceMs) target.setDate(target.getDate() + 1); // đã qua lâu → lần ra kế tiếp (mai)
     const remaining = Math.round((target - now) / 1000);
-    items.push({ ...b, target, remaining, key: `${b.name}|${target.toDateString()}|${b.h}:${b.m}:${b.s}` });
+    items.push({
+      ...b, target, remaining,
+      tomorrow: target.getDate() !== now.getDate(),
+      key: `${b.name}|${target.toDateString()}|${b.h}:${b.m}:${b.s}`,
+    });
   }
   items.sort((a, b) => a.remaining - b.remaining);
 
@@ -256,13 +311,13 @@ function tick() {
 
   // Hiển thị
   const maxSec = CONFIG.LOOKAHEAD_MINUTES * 60;
-  const visible = items.filter((i) => i.remaining <= maxSec);
+  const visible = maxSec > 0 ? items.filter((i) => i.remaining <= maxSec) : items;
   const tb = $("#list");
   const rowClass = (i) =>
     (i.remaining < 0 ? "passed" : i.remaining <= settings.warn ? "imminent" : i.remaining <= 300 ? "soon" : "") +
     (settings.muted.has(i.name) ? " mutedrow" : "");
   const msg = state.error ||
-    (!visible.length ? `Không có boss nào ra trong ${CONFIG.LOOKAHEAD_MINUTES} phút tới` : null);
+    (!visible.length ? (maxSec > 0 ? `Không có boss nào ra trong ${CONFIG.LOOKAHEAD_MINUTES} phút tới` : "Chưa có boss nào (kiểm tra link sheet hoặc đang ẩn hết server)") : null);
   if (msg) {
     tb.innerHTML = `<tr><td class="empty" colspan="5">${esc(msg)}</td></tr>`;
     state.sig = "";
@@ -276,8 +331,8 @@ function tick() {
         const at = `${pad(i.h)}:${pad(i.m)}:${pad(i.s)}`;
         return `<tr class="${rowClass(i)}">
           <td class="name">${esc(i.name)}</td>
-          <td class="num">${at}</td>
-          <td class="num cd">${i.remaining < 0 ? "đã ra" : fmt(i.remaining)}</td>
+          <td class="num">${at}${i.tomorrow ? ' <span class="muted small">mai</span>' : ""}</td>
+          <td class="num cd">${fmtCountdown(i.remaining)}</td>
           <td class="num death">${esc(i.death)}</td>
           <td class="mute"><input type="checkbox" data-name="${esc(i.name)}" ${settings.muted.has(i.name) ? "checked" : ""}></td>
         </tr>`;
@@ -286,7 +341,7 @@ function tick() {
       visible.forEach((i, idx) => {
         const tr = tb.rows[idx];
         tr.className = rowClass(i);
-        tr.cells[2].textContent = i.remaining < 0 ? "đã ra" : fmt(i.remaining);
+        tr.cells[2].textContent = fmtCountdown(i.remaining);
       });
     }
   }
@@ -299,7 +354,7 @@ function tick() {
   if (state.alerted.size > 500) state.alerted.clear();
 
   $("#status").textContent = state.lastFetch
-    ? `Cập nhật sheet lúc ${state.lastFetch.toLocaleTimeString("vi-VN")} · ${state.bosses.length} boss`
+    ? `Cập nhật sheet lúc ${state.lastFetch.toLocaleTimeString("vi-VN")} · hiện ${visible.length}/${state.bosses.length} boss`
     : "Đang tải sheet…";
 }
 
@@ -334,6 +389,8 @@ $("#testBtn").addEventListener("click", () => {
   announce(["T7-Cruma Ô Uế"]);
 });
 
+$("#graceSel").value = String(settings.grace);
+$("#graceSel").addEventListener("change", (e) => { settings.grace = +e.target.value; saveSettings(); tick(); });
 $("#warnSelect").value = String(settings.warn);
 $("#warnSelect").addEventListener("change", (e) => { settings.warn = +e.target.value; saveSettings(); });
 fillVoices();
