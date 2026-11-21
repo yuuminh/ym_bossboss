@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Boss Alarm</title>
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
   <!-- Màn hình đăng nhập -->
@@ -23,11 +23,15 @@
     <header>
       <h1>⚔️ Boss Alarm</h1>
       <div id="clock" class="clock">--:--:--</div>
+      <div id="filters" class="chips"></div>
+      <span class="spacer"></span>
       <button id="enableBtn" class="btn primary">🔔 Bật âm thanh</button>
+      <button id="settingsBtn" class="btn" title="Ẩn / hiện khung cài đặt">Ẩn/Hiện</button>
       <button id="logoutBtn" class="btn" title="Đăng xuất">⎋</button>
     </header>
 
-    <section class="panel">
+    <!-- Khung cài đặt: bấm "Ẩn/Hiện" ở trên để ẩn / hiện -->
+    <section id="settings" class="panel">
       <div class="sheetrow">
         <span class="muted">📄 Sheet</span>
         <input id="sheetLink" placeholder="Dán link Google Sheet vào đây" spellcheck="false">
@@ -54,9 +58,19 @@
       <label><input type="checkbox" id="beepChk"> Hô "Boss Boss" (giọng nữ)</label>
       <label><input type="checkbox" id="voiceChk"> Đọc tên boss</label>
       <label>Giọng đọc tên <select id="voiceSel"><option>…</option></select></label>
-      <button id="testBtn" class="btn">🔊 Thử</button>
+      <label>🔊 Âm lượng
+        <input type="range" id="volRange" min="0" max="100" step="5" style="width:90px;vertical-align:middle;accent-color:#4f8cff">
+        <span id="volVal" class="muted small">100%</span>
+      </label>
+      <button id="testBtn" class="btn">▶ Thử</button>
       <span class="sep"></span>
-      <div id="filters" class="chips"></div>
+      <span class="muted">Màu chữ server:</span>
+      <span id="colorPickers" class="colorpicks"></span>
+      <div class="voicerow">
+        <span class="muted">Giọng theo server:</span>
+        <span id="groupVoices" class="colorpicks"></span>
+        <span class="muted small">(giọng riêng từng boss: bấm 🎙 sau tên boss)</span>
+      </div>
       <span id="status" class="muted small"></span>
     </section>
 
@@ -64,10 +78,10 @@
       <thead>
         <tr>
           <th>Tên boss</th>
+          <th class="ctl" title="🔔 bật/tắt chuông báo · 🎙 giọng đọc riêng"></th>
           <th class="num">Time ra</th>
           <th class="num">Đếm ngược</th>
           <th class="num">Time chết</th>
-          <th class="mute" title="Tick để không báo boss này">Không đọc</th>
         </tr>
       </thead>
       <tbody id="list"></tbody>
@@ -76,6 +90,6 @@
     <p class="muted small foot">Giữ tab này mở. Lần đầu phải bấm "Bật âm thanh" thì trình duyệt mới cho phát tiếng.</p>
   </div>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>
