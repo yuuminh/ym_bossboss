@@ -88,6 +88,7 @@ td.ctl { white-space: nowrap; padding: 3px 4px; width: 1%; }
 /* tiêu đề + thanh âm lượng nằm dưới tên */
 .brand { display: flex; flex-direction: column; gap: 3px; flex: 0 0 auto; }
 .brand .vol { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.brand .volbtn { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
 .brand .vol input[type=range] { width: 110px; padding: 0; accent-color: #4f8cff; }
 .prow select { max-width: 200px; }
 /* mỗi server 1 dòng: tên · màu · mã hex · giọng đọc · nghe thử */
@@ -152,4 +153,28 @@ tr.passed { opacity: .5; }
   body { padding: 6px; font-size: 13px; }
   td, th { padding: 3px 5px; }
   td.death { font-size: 11px; }
+}
+
+/* ===== Đầu trang: lưới căn thẳng hàng ===== */
+#app > header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "title clock btns" "vol chips btns";
+  column-gap: 20px; row-gap: 6px; align-items: center;
+  margin-bottom: 10px;
+}
+#app > header .brand { display: contents; }
+#app > header h1 { grid-area: title; flex: none !important; line-height: 1.2; }
+#app > header .clock { grid-area: clock; font-size: 22px; line-height: 1.2; justify-self: start; }
+#app > header .vol { grid-area: vol; }
+#app > header .chips { grid-area: chips; align-self: center; }
+#app > header .hbtns { grid-area: btns; display: flex; align-items: center; gap: 8px; justify-self: end; }
+.brand .vol input[type=range] { width: 120px; }
+@media (max-width: 640px) {
+  #app > header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "title clock" "vol vol" "chips chips" "btns btns";
+  }
+  #app > header .clock { justify-self: end; }
+  #app > header .hbtns { justify-self: start; flex-wrap: wrap; }
 }

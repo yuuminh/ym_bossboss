@@ -28,6 +28,8 @@ const CONFIG = {
 /* =============================================================== */
 
 const $ = (s) => document.querySelector(s);
+// âm lượng thực tế (0-1): tắt tiếng thì bằng 0
+const vol = () => (settings.silent ? 0 : settings.volume / 100);
 const pad = (n) => String(n).padStart(2, "0");
 
 const saved = JSON.parse(localStorage.getItem("bossAlarm") || "{}");
@@ -47,7 +49,9 @@ const settings = {
   voiceByBoss: saved.voiceByBoss ?? {},    // giọng riêng từng boss: { "T7-Katan": "tên giọng" }
   voiceByGroup: saved.voiceByGroup ?? {},  // giọng riêng từng server: { T7: "tên giọng" }
   grace: saved.grace ?? CONFIG.PASSED_GRACE_MINUTES,   // boss đã ra, ngắt khỏi đầu bảng sau bao nhiêu phút
-  volume: saved.volume ?? 100,                          // âm lượng 0-100
+  volume: saved.volume ?? 100,
+  silent: saved.silent ?? false,                        // bấm icon 🔊 để tắt tiếng hẳn
+  rate: saved.rate ?? 1.5,                              // tốc độ đọc (1 = bình thường)                          // âm lượng 0-100
   look: saved.look ?? CONFIG.LOOKAHEAD_MINUTES,         // hiện boss ra trong bao nhiêu phút tới (0 = tất cả trong ngày)
   // màu từng server: { T7: "#44c173", ... }. Bản màu mặc định mới (colorsV=3) sẽ thay màu cũ 1 lần
   colors: saved.colorsV === 3 ? (saved.colors ?? {}) : {},
@@ -101,6 +105,8 @@ function saveSettings() {
     voiceName: settings.voiceName,
     grace: settings.grace,
     volume: settings.volume,
+    silent: settings.silent,
+    rate: settings.rate,
     look: settings.look,
     colors: settings.colors,
     colorsV: 3,
@@ -386,7 +392,8 @@ function speakGoogle(text) {
     const go = () => {
       if ("speechSynthesis" in window && (speechSynthesis.speaking || speechSynthesis.pending)) return setTimeout(go, 150);
       const a = new Audio("https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=" + encodeURIComponent(text));
-      a.volume = Math.min(1, settings.volume / 100);
+      a.volume = Math.min(1, vol());
+      a.defaultPlaybackRate = a.playbackRate = settings.rate;   // Google Dịch: tăng tốc cả đoạn âm thanh
       a.onended = end;
       a.onerror = () => { console.warn("Google Dịch không đọc được (mạng/bị chặn)"); end(); };
       setTimeout(end, 15000);
@@ -403,8 +410,8 @@ function speak(text, voice) {
   const v = voice || pickVoice();
   if (v) u.voice = v;
   u.lang = v ? v.lang : "vi-VN";
-  u.rate = 1;
-  u.volume = settings.volume / 100;
+  u.rate = settings.rate;
+  u.volume = vol();
   speechSynthesis.speak(u);
 }
 
@@ -432,8 +439,8 @@ function sayBoss() {
   const v = englishVoice(male ? "male" : "female");
   if (v) u.voice = v;
   u.pitch = male ? 0.9 : 1.8;
-  u.rate = male ? 1 : 1.1;
-  u.volume = settings.volume / 100;
+  u.rate = (male ? 1 : 1.1) * settings.rate;
+  u.volume = vol();
   speechSynthesis.speak(u);
 }
 
@@ -447,7 +454,7 @@ function playDing() {
     const g = ctx.createGain();
     osc.type = "sine";
     osc.frequency.value = 880;
-    g.gain.setValueAtTime(Math.max(0.001, settings.volume / 100), t);
+    g.gain.setValueAtTime(Math.max(0.001, vol()), t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
     osc.connect(g).connect(ctx.destination);
     osc.start(t);
@@ -482,7 +489,7 @@ function playChime(kind) {
     const g = ctx.createGain();
     osc.type = "sine";
     osc.frequency.value = 1760;
-    g.gain.setValueAtTime(Math.max(0.001, settings.volume / 100), t);
+    g.gain.setValueAtTime(Math.max(0.001, vol()), t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
     osc.connect(g).connect(ctx.destination);
     osc.start(t);
@@ -913,11 +920,29 @@ $("#nameTest").addEventListener("click", () => {     // thử đọc tên boss
 
 $("#volRange").value = String(settings.volume);
 $("#volVal").textContent = settings.volume + "%";
+function paintVol() {
+  const off = settings.silent || settings.volume === 0;
+  $("#volIcon").textContent = off ? "🔇" : "🔊";
+  $("#volRange").style.opacity = settings.silent ? 0.4 : 1;
+}
+paintVol();
 $("#volRange").addEventListener("input", (e) => {
   settings.volume = +e.target.value;
+  settings.silent = false;               // kéo thanh là bật tiếng lại
   $("#volVal").textContent = settings.volume + "%";
+  paintVol();
   saveSettings();
 });
+// Bấm icon loa: tắt / bật tiếng
+$("#volIcon").addEventListener("click", () => {
+  settings.silent = !settings.silent;
+  if (settings.silent && "speechSynthesis" in window) speechSynthesis.cancel();   // đang đọc dở thì ngắt luôn
+  paintVol();
+  saveSettings();
+});
+$("#rateSel").value = String(settings.rate);
+if ($("#rateSel").value !== String(settings.rate)) { settings.rate = 1.5; $("#rateSel").value = "1.5"; }
+$("#rateSel").addEventListener("change", (e) => { settings.rate = +e.target.value; saveSettings(); });
 // Bấm tiêu đề cột "Đếm ngược": bật/tắt loại bỏ những boss đã ra khỏi bảng
 function paintSortHeader() {
   const th = $("#sortCd");
