@@ -34,6 +34,7 @@ const settings = {
   warn: saved.warn ?? CONFIG.WARN_SECONDS,
   voice: saved.voiceOn ?? false,       // ô tick "Đọc tên boss" (mặc định tắt: chỉ hô "Boss Boss")
   beep: saved.beep ?? true,            // nay là: hô "Boss boss"
+  ding: saved.dingOn ?? false,         // ô tick "Bật âm báo khi boss ra": ding ding đúng lúc boss ra
   voiceName: saved.voiceName ?? "",
   hidden: new Set(saved.hidden ?? []),
   muted: new Set(saved.muted ?? []),   // boss bị tắt chuông (lưu theo tên)
@@ -86,6 +87,7 @@ function saveSettings() {
   localStorage.setItem("bossAlarm", JSON.stringify({
     warn: settings.warn, beep: settings.beep,
     voiceOn: settings.voice,
+    dingOn: settings.ding,
     voiceName: settings.voiceName,
     grace: settings.grace,
     volume: settings.volume,
@@ -108,6 +110,7 @@ const state = {
   noTime: [],            // boss chưa có giờ hợp lệ (cột G lỗi / trống)
   groups: new Set(),
   alerted: new Set(),
+  dinged: new Set(),     // boss đã kêu ding ding lúc ra
   seen: (() => { try { return JSON.parse(localStorage.getItem("bossSeen") || "{}"); } catch (e) { return {}; } })(),
   seenSaved: 0,          // lần cuối ghi "boss đã thấy" vào trình duyệt
   itemsByKey: {},        // boss đang hiện trong bảng (để neo 📌)
@@ -540,6 +543,16 @@ function tick() {
   }
   if (toAnnounce.length && state.enabled) announce(toAnnounce);
 
+  // Âm báo "ding ding" đúng lúc boss ra (nếu có tick chọn)
+  let dingNow = false;
+  for (const it of items) {
+    if (it.remaining <= 0 && it.remaining > -30 && !state.dinged.has(it.key)) {
+      state.dinged.add(it.key);
+      if (settings.ding && !settings.muted.has(it.name)) dingNow = true;
+    }
+  }
+  if (dingNow && state.enabled) playDing();
+
   // Boss không còn trong sheet nhưng vẫn phải giữ:
   //  - boss đã neo 📌 → giữ đến khi bỏ neo
   //  - boss vừa ra mà sheet đổi dòng ngay lúc đó → giữ đủ thời gian "ngắt" (5/10/15 phút)
@@ -652,6 +665,7 @@ function tick() {
 
   // Dọn key cũ
   if (state.alerted.size > 500) state.alerted.clear();
+  if (state.dinged.size > 500) state.dinged.clear();
 
   const nt = state.noTime.length;
   $("#status").textContent = state.lastFetch
@@ -853,6 +867,9 @@ fillVoices();
 $("#voiceSel").addEventListener("change", (e) => { settings.voiceName = e.target.value; saveSettings(); });
 $("#voiceChk").checked = settings.voice;
 $("#voiceChk").addEventListener("change", (e) => { settings.voice = e.target.checked; saveSettings(); });
+$("#dingChk").checked = settings.ding;
+$("#dingChk").addEventListener("change", (e) => { settings.ding = e.target.checked; saveSettings(); if (e.target.checked) { enableAudio(); playDing(); } });
+$("#dingTest").addEventListener("click", () => { enableAudio(); playDing(); });
 $("#beepChk").checked = settings.beep;
 $("#beepChk").addEventListener("change", (e) => { settings.beep = e.target.checked; saveSettings(); });
 
