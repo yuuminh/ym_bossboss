@@ -26,25 +26,12 @@
       <div id="filters" class="chips"></div>
       <span class="spacer"></span>
       <button id="enableBtn" class="btn primary">🔔 Bật âm thanh</button>
-      <button id="settingsBtn" class="btn" title="Ẩn / hiện khung cài đặt">Ẩn/Hiện</button>
+      <button id="settingsBtn" class="btn" title="Ẩn / hiện bảng cài đặt">Ẩn/hiện bảng cài đặt</button>
       <button id="logoutBtn" class="btn" title="Đăng xuất">⎋</button>
     </header>
 
-    <!-- Khung cài đặt: bấm "Ẩn/Hiện" ở trên để ẩn / hiện -->
+    <!-- Bảng cài đặt: bấm "Ẩn/hiện bảng cài đặt" ở trên để ẩn / hiện -->
     <section id="settings" class="panel">
-      <div class="sheetrow">
-        <span class="muted">📄 Sheet</span>
-        <input id="sheetLink" placeholder="Dán link Google Sheet vào đây" spellcheck="false">
-        <button id="sheetSave" class="btn">Lưu</button>
-      </div>
-      <div id="sheetMsg" class="small"></div>
-
-      <div class="prow">
-        <label title="Không bắt buộc. Trang tự đọc ngày ẩn trong cột G; nếu thấy dòng trạng thái ghi '0 boss có ngày' thì thêm 1 cột phụ trong sheet rồi nhập chữ cái cột đó vào đây">Cột ngày giờ đầy đủ (không bắt buộc)
-          <input id="fullCol" maxlength="2" size="3" placeholder="vd: N" spellcheck="false" style="width:46px;text-transform:uppercase">
-        </label>
-      </div>
-
       <div class="prow">
         <label>Báo trước
           <select id="warnSelect">
@@ -88,7 +75,12 @@
       </div>
 
       <div class="prow">
-        <label><input type="checkbox" id="dingChk"> Bật âm báo khi boss ra (ding ding)</label>
+        <label><input type="checkbox" id="dingChk"> Bật âm báo khi boss ra</label>
+        <select id="dingSel" title="Kiểu âm báo">
+          <option value="ding">Ding ding</option>
+          <option value="ting">Ting ting</option>
+          <option value="voice">Giọng nói "Boss ra"</option>
+        </select>
         <button id="dingTest" class="btn">▶ Thử</button>
       </div>
 
@@ -121,6 +113,6 @@
     <p class="muted small foot">Giữ tab này mở. Lần đầu phải bấm "Bật âm thanh" thì trình duyệt mới cho phát tiếng.</p>
   </div>
 
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>

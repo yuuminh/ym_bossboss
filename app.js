@@ -9,8 +9,8 @@ const CONFIG = {
   ],
 
   // ID nằm trong link sheet: docs.google.com/spreadsheets/d/<SHEET_ID>/edit#gid=<GID>
-  SHEET_ID: "DAN_ID_SHEET_VAO_DAY",
-  GID: "0",                 // số sau "gid=" trong link (tab chứa bảng boss)
+  SHEET_ID: "1_1G2sCGX63sY6g01B2qBoGOu2WfmNDl3p7Yx_DzYsMc",
+  GID: "34062309",                 // số sau "gid=" trong link (tab chứa bảng boss)
 
   // Cột trong sheet (theo chữ cái ở đầu bảng)
   COL_GROUP: "B",           // SV (T7, L2, K6, L7...)
@@ -34,6 +34,7 @@ const settings = {
   warn: saved.warn ?? CONFIG.WARN_SECONDS,
   voice: saved.voiceOn ?? false,       // ô tick "Đọc tên boss" (mặc định tắt: chỉ hô "Boss Boss")
   beep: saved.beep ?? true,            // nay là: hô "Boss boss"
+  dingKind: saved.dingKind ?? "ding",   // kiểu âm báo khi boss ra: ding | ting | voice
   ding: saved.dingOn ?? false,         // ô tick "Bật âm báo khi boss ra": ding ding đúng lúc boss ra
   voiceName: saved.voiceName ?? "",
   hidden: new Set(saved.hidden ?? []),
@@ -46,7 +47,6 @@ const settings = {
   // màu từng server: { T7: "#44c173", ... }. Bản màu mặc định mới (colorsV=3) sẽ thay màu cũ 1 lần
   colors: saved.colorsV === 3 ? (saved.colors ?? {}) : {},
   hideDone: saved.hideDone ?? false,                    // bấm tiêu đề "Đếm ngược": loại bỏ boss đã ra
-  fullCol: saved.fullCol ?? "",                        // cột phụ chứa ngày giờ đầy đủ (không bắt buộc), ví dụ "N"
   pins: saved.pins ?? {},                             // boss được "neo" 📌: { key: {name, group, h, m, s, death, t} }
   panel: saved.panel ?? true,                           // khung Cài đặt đang mở hay thu gọn
 };
@@ -88,6 +88,7 @@ function saveSettings() {
     warn: settings.warn, beep: settings.beep,
     voiceOn: settings.voice,
     dingOn: settings.ding,
+    dingKind: settings.dingKind,
     voiceName: settings.voiceName,
     grace: settings.grace,
     volume: settings.volume,
@@ -95,7 +96,6 @@ function saveSettings() {
     colors: settings.colors,
     colorsV: 3,
     pins: settings.pins,
-    fullCol: settings.fullCol,
     hideDone: settings.hideDone,
     panel: settings.panel,
     hidden: [...settings.hidden],
@@ -120,27 +120,9 @@ const state = {
   error: null,
 };
 
-/* ---------------- Link Google Sheet (lưu trong trình duyệt) ---------------- */
+/* ---------------- Google Sheet mặc định (cấu hình ở CONFIG phía trên) ---------------- */
 function getSheet() {
-  try {
-    const s = JSON.parse(localStorage.getItem("bossSheet") || "null");
-    if (s && s.id) return s;
-  } catch (e) {}
-  if (!CONFIG.SHEET_ID.startsWith("DAN_ID")) return { id: CONFIG.SHEET_ID, gid: CONFIG.GID };
-  return null;
-}
-
-function parseSheetLink(text) {
-  const t = (text || "").trim();
-  const m = t.match(/\/d\/([\w-]+)/);
-  const id = m ? m[1] : (/^[\w-]{25,}$/.test(t) ? t : null);
-  if (!id) return null;
-  const g = t.match(/[#&?]gid=(\d+)/);
-  return { id, gid: g ? g[1] : "0" };
-}
-
-function sheetUrl(s) {
-  return `https://docs.google.com/spreadsheets/d/${s.id}/edit#gid=${s.gid}`;
+  return { id: CONFIG.SHEET_ID, gid: CONFIG.GID };
 }
 
 // Tên server lấy từ TÊN BOSS (cột E): phần đứng trước dấu "-" cuối cùng.
@@ -238,14 +220,13 @@ async function loadSheet() {
   const sh = getSheet();
   if (!sh) {
     state.bosses = [];
-    state.error = "Chưa có link Google Sheet — bấm Ẩn/Hiện, dán link vào rồi bấm Lưu";
+    state.error = "Chưa có link Google Sheet — kiểm tra SHEET_ID trong app.js";
     return;
   }
   try {
     const { rows, mode } = await fetchSheetRows(sh);
     const iG = colIndex(CONFIG.COL_GROUP), iN = colIndex(CONFIG.COL_NAME), iT = colIndex(CONFIG.COL_TIME);
     const iD = colIndex(CONFIG.COL_DEATH);
-    const fc = /^[A-Za-z]{1,2}$/.test(settings.fullCol || "") ? colIndex(settings.fullCol) : -1;   // cột phụ chứa ngày giờ đầy đủ (không bắt buộc)
     const empty = { s: "", t: null };
     const bosses = [];
     const noTime = [];   // dòng có tên boss nhưng cột giờ lỗi/trống (#VALUE!, ...) — chỉ hiện khi chọn "Hiện trước: Tất cả"
@@ -258,7 +239,6 @@ async function loadSheet() {
       if (!name) continue;
       // ngày: (1) ô G có sẵn ngày  (2) cột phụ  (3) chữ trong ô G có kèm ngày
       let t = cT.t;
-      if (t == null && fc >= 0) t = parseFullDate((r[fc] || empty).s);
       if (t == null) t = parseFullDate(cT.s);
       let h, mi, se;
       if (t != null) {
@@ -429,6 +409,29 @@ function playDing() {
   });
 }
 
+// Âm báo lúc boss ra: "ding" | "ting" | "voice" (đọc "Boss ra")
+function playChime(kind) {
+  if (kind === "voice") {
+    if ("speechSynthesis" in window) { speechSynthesis.resume(); speak("Boss ra"); }
+    return;
+  }
+  if (kind !== "ting") return playDing();
+  const ctx = state.audio;
+  if (!ctx) return;
+  [0, 0.3].forEach((d) => {            // ting ting: cao, ngắn, trong
+    const t = ctx.currentTime + d;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 1760;
+    g.gain.setValueAtTime(Math.max(0.001, settings.volume / 100), t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.45);
+  });
+}
+
 // items: [{ name, group }]
 function announce(items) {
   const synth = "speechSynthesis" in window;
@@ -551,7 +554,7 @@ function tick() {
       if (settings.ding && !settings.muted.has(it.name)) dingNow = true;
     }
   }
-  if (dingNow && state.enabled) playDing();
+  if (dingNow && state.enabled) playChime(settings.dingKind);
 
   // Boss không còn trong sheet nhưng vẫn phải giữ:
   //  - boss đã neo 📌 → giữ đến khi bỏ neo
@@ -612,7 +615,7 @@ function tick() {
   // "Hiện trước: Tất cả" → hiện luôn cả boss chưa có giờ (cột G lỗi / trống) ở cuối bảng
   const noTimeRows = [];   // boss chưa có giờ: ẩn hẳn, có giờ rồi sẽ tự hiện
   const msg = state.error ||
-    (!visible.length && !noTimeRows.length ? (maxSec > 0 ? `Không có boss nào ra trong ${settings.look / 60} tiếng tới (đổi ở ô "Hiện trước" trong Ẩn/Hiện)` : "Chưa có boss nào (kiểm tra link sheet hoặc đang ẩn hết server)") : null);
+    (!visible.length && !noTimeRows.length ? (maxSec > 0 ? `Không có boss nào ra trong ${settings.look / 60} tiếng tới (đổi ở ô "Hiện trước" trong bảng cài đặt)` : "Chưa có boss nào (kiểm tra link sheet hoặc đang ẩn hết server)") : null);
   if (msg) {
     tb.innerHTML = `<tr><td class="empty" colspan="5">${esc(msg)}</td></tr>`;   // 5 cột: tên, time ra, đếm ngược, time chết, icon
     state.sig = "";
@@ -847,15 +850,6 @@ $("#sortCd").addEventListener("click", () => {
 });
 paintSortHeader();
 
-$("#fullCol").value = settings.fullCol;
-$("#fullCol").addEventListener("change", async (e) => {
-  settings.fullCol = e.target.value.trim().toUpperCase();
-  e.target.value = settings.fullCol;
-  saveSettings();
-  await loadSheet();
-  state.sig = "";
-  tick();
-});
 $("#lookSel").value = String(settings.look);
 if ($("#lookSel").value !== String(settings.look)) { settings.look = 120; $("#lookSel").value = "120"; }
 $("#lookSel").addEventListener("change", (e) => { settings.look = +e.target.value; saveSettings(); state.sig = ""; tick(); });
@@ -868,43 +862,13 @@ $("#voiceSel").addEventListener("change", (e) => { settings.voiceName = e.target
 $("#voiceChk").checked = settings.voice;
 $("#voiceChk").addEventListener("change", (e) => { settings.voice = e.target.checked; saveSettings(); });
 $("#dingChk").checked = settings.ding;
-$("#dingChk").addEventListener("change", (e) => { settings.ding = e.target.checked; saveSettings(); if (e.target.checked) { enableAudio(); playDing(); } });
-$("#dingTest").addEventListener("click", () => { enableAudio(); playDing(); });
+$("#dingChk").addEventListener("change", (e) => { settings.ding = e.target.checked; saveSettings(); if (e.target.checked) { enableAudio(); playChime(settings.dingKind); } });
+$("#dingSel").value = settings.dingKind;
+if ($("#dingSel").value !== settings.dingKind) { settings.dingKind = "ding"; $("#dingSel").value = "ding"; }
+$("#dingSel").addEventListener("change", (e) => { settings.dingKind = e.target.value; saveSettings(); enableAudio(); playChime(settings.dingKind); });
+$("#dingTest").addEventListener("click", () => { enableAudio(); playChime(settings.dingKind); });
 $("#beepChk").checked = settings.beep;
 $("#beepChk").addEventListener("change", (e) => { settings.beep = e.target.checked; saveSettings(); });
-
-/* ---------------- Ô dán link sheet ---------------- */
-function fillSheetBox() {
-  const s = getSheet();
-  $("#sheetLink").value = s ? sheetUrl(s) : "";
-}
-
-async function saveSheet() {
-  const s = parseSheetLink($("#sheetLink").value);
-  const msg = $("#sheetMsg");
-  if (!s) {
-    msg.textContent = "❌ Link không đúng";
-    msg.className = "err small";
-    return;
-  }
-  localStorage.setItem("bossSheet", JSON.stringify(s));
-  state.alerted.clear();
-  state.sig = "";
-  msg.textContent = "Đang tải…";
-  msg.className = "muted small";
-  await loadSheet();
-  tick();
-  if (state.error) {
-    msg.textContent = "❌ " + state.error;
-    msg.className = "err small";
-  } else {
-    msg.textContent = `✅ Đã lưu, đọc được ${state.bosses.length} boss`;
-    msg.className = "ok small";
-  }
-}
-
-$("#sheetSave").addEventListener("click", saveSheet);
-$("#sheetLink").addEventListener("keydown", (e) => { if (e.key === "Enter") saveSheet(); });
 
 /* ---------------- Đăng nhập ---------------- */
 // Lưu ý: GitHub Pages là web tĩnh nên đây chỉ là "khóa cửa" ở phía trình duyệt,
@@ -936,8 +900,6 @@ function startApp() {
   $("#app").hidden = false;
   if (started) return;
   started = true;
-  fillSheetBox();
-  if (!getSheet()) setPanel(true);   // chưa có link sheet thì tự mở khung Ẩn/Hiện
   loadSheet().then(tick);
   setInterval(loadSheet, CONFIG.REFRESH_SECONDS * 1000);
   setInterval(tick, 1000);
