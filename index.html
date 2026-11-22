@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Boss Alarm</title>
-  <link rel="stylesheet" href="style.css?v=14">
+  <link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
   <!-- Màn hình đăng nhập -->
@@ -104,10 +104,10 @@
       <thead>
         <tr>
           <th>Tên boss</th>
-          <th class="ctl" title="🔔 bật/tắt chuông báo · 📌 neo boss (không bị ngắt) · 🎙 giọng đọc riêng"></th>
           <th class="num">Time ra</th>
-          <th class="num">Đếm ngược</th>
+          <th class="num sortable" id="sortCd">Đếm ngược <span id="sortMark">⇅</span></th>
           <th class="num">Time chết</th>
+          <th class="ctl" title="chuông: bật/tắt báo · 📌 neo boss lên đầu · 🎙 giọng đọc riêng"></th>
         </tr>
       </thead>
       <tbody id="list"></tbody>
@@ -116,6 +116,6 @@
     <p class="muted small foot">Giữ tab này mở. Lần đầu phải bấm "Bật âm thanh" thì trình duyệt mới cho phát tiếng.</p>
   </div>
 
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

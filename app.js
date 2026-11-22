@@ -44,7 +44,8 @@ const settings = {
   look: saved.look ?? CONFIG.LOOKAHEAD_MINUTES,         // hiện boss ra trong bao nhiêu phút tới (0 = tất cả trong ngày)
   // màu từng server: { T7: "#44c173", ... }. Bản màu mặc định mới (colorsV=3) sẽ thay màu cũ 1 lần
   colors: saved.colorsV === 3 ? (saved.colors ?? {}) : {},
-  fullCol: saved.fullCol ?? "",                         // cột phụ chứa ngày giờ đầy đủ (không bắt buộc), ví dụ "N"
+  hideDone: saved.hideDone ?? false,                    // bấm tiêu đề "Đếm ngược": loại bỏ boss đã ra
+  fullCol: saved.fullCol ?? "",                        // cột phụ chứa ngày giờ đầy đủ (không bắt buộc), ví dụ "N"
   pins: saved.pins ?? {},                             // boss được "neo" 📌: { key: {name, group, h, m, s, death, t} }
   panel: saved.panel ?? true,                           // khung Cài đặt đang mở hay thu gọn
 };
@@ -93,6 +94,7 @@ function saveSettings() {
     colorsV: 3,
     pins: settings.pins,
     fullCol: settings.fullCol,
+    hideDone: settings.hideDone,
     panel: settings.panel,
     hidden: [...settings.hidden],
     muted: [...settings.muted],
@@ -444,18 +446,22 @@ function fmt(sec) {
 
 // Cột Đếm ngược: cả chữ lẫn số đổi màu theo thời gian còn lại
 //   trên 15 phút → trắng · trên 5 phút → xám · dưới 5 phút → đỏ
-function cdLevel(sec) {
-  if (sec < 0) return "x";      // đã ra
-  if (sec >= 900) return "w";   // trên 15 phút
-  if (sec >= 300) return "m";   // 5 – 15 phút
-  return "r";                   // dưới 5 phút
+//   đúng phút boss ra → "Đến giờ" (đỏ đậm); sang phút sau → "Đã ra N phút"
+function cdLevel(i) {
+  if (i.arrived) return "n";          // đang trong phút boss ra
+  const sec = i.remaining;
+  if (sec < 0) return "x";            // đã ra
+  if (sec >= 900) return "w";         // trên 15 phút
+  if (sec >= 300) return "m";         // 5 – 15 phút
+  return "r";                         // dưới 5 phút
 }
 
-function fmtCountdown(sec) {
+function fmtCountdown(i) {
+  const sec = i.remaining;
   const n = (v) => `<span class="n">${v}</span>`;
-  if (sec < 0) {
-    const t = Math.floor(-sec / 60);
-    if (t < 1) return "Vừa ra";
+  if (sec <= 0) {
+    const t = i.elapsedMin;           // số phút (theo đồng hồ) kể từ phút boss ra
+    if (t < 1) return "Đến giờ";
     const h = Math.floor(t / 60), m = t % 60;
     if (h) return m ? `Đã ra ${n(h)} giờ ${n(m)} phút` : `Đã ra ${n(h)} giờ`;
     return `Đã ra ${n(t)} phút`;
@@ -464,6 +470,13 @@ function fmtCountdown(sec) {
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
   if (h) return m ? `Còn ${n(h)} giờ ${n(m)} phút` : `Còn ${n(h)} giờ`;
   return `Còn ${n(m)} phút`;
+}
+
+// Icon chuông màu trắng (SVG); tắt chuông thì xám mờ và có gạch chéo
+const BELL_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22zm6.8-6.2V11c0-3.1-1.7-5.7-4.6-6.4V4a2.2 2.2 0 1 0-4.4 0v.6C6.9 5.3 5.2 7.9 5.2 11v4.8L3 18v1h18v-1l-2.2-2.2z"/></svg>';
+const BELL_OFF_SVG = BELL_SVG.replace("</svg>", '<path d="M3.5 3.5 20.5 20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>');
+function bellBtn(name, off) {
+  return `<button class="bell${off ? " off" : ""}" data-name="${esc(name)}" title="${off ? "Đang TẮT chuông — bấm để bật lại" : "Đang bật chuông — bấm để tắt báo boss này"}">${off ? BELL_OFF_SVG : BELL_SVG}</button>`;
 }
 
 function esc(s) {
@@ -555,8 +568,15 @@ function tick() {
     const diff = Math.round((d0 - today0) / 86400000);
     return diff === 0 ? "" : diff === 1 ? "mai" : `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
   };
-  all.forEach((i) => { i.pinned = !!settings.pins[i.key]; i.day = dayLabel(i.target); });
-  all.sort((a, b) => (a.stale ? 1 : 0) - (b.stale ? 1 : 0) || a.remaining - b.remaining);
+  all.forEach((i) => {
+    i.pinned = !!settings.pins[i.key];
+    i.day = dayLabel(i.target);
+    // phút (theo đồng hồ) đã trôi qua kể từ phút boss ra: 0 = đang đúng phút "Đến giờ", 1 = "Đã ra 1 phút"...
+    i.elapsedMin = i.remaining <= 0 ? Math.floor(nowMs / 60000) - Math.floor(i.target.getTime() / 60000) : 0;
+    i.arrived = i.remaining <= 0 && i.elapsedMin < 1;
+  });
+  // boss neo 📌 luôn nằm trên cùng (dù chưa ra), sau đó theo thời gian; boss quá hạn chưa cập nhật xuống cuối
+  all.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (a.stale ? 1 : 0) - (b.stale ? 1 : 0) || a.remaining - b.remaining);
   state.itemsByKey = {};
   all.forEach((i) => { state.itemsByKey[i.key] = i; });
   saveSeen(false);
@@ -565,17 +585,20 @@ function tick() {
   const maxSec = settings.look * 60;
   // Boss đã ra quá thời gian "ngắt" thì bị cắt khỏi bảng (trừ boss neo 📌); boss chưa quá thì vẫn giữ.
   // "Hiện trước: Tất cả" = hiện mọi boss, kể cả boss đã bị ngắt (nằm cuối bảng, giờ ra của ngày mai).
-  const visible = all.filter((i) => i.pinned || i.ghost || maxSec === 0 || (!i.stale && i.remaining <= maxSec));
+  // Bấm tiêu đề "Đếm ngược" → loại bỏ boss đã ra (boss neo 📌 và boss đang "Đến giờ" vẫn giữ)
+  const doneGone = (i) => settings.hideDone && i.remaining < 0 && !i.arrived && !i.pinned;
+  const visible = all.filter((i) => !doneGone(i) && (i.pinned || i.ghost || maxSec === 0 || (!i.stale && i.remaining <= maxSec)));
   const tb = $("#list");
+  // dòng boss: sáng đến hết phút "Đến giờ"; sang phút sau mới nhạt đi (boss neo 📌 thì luôn sáng)
   const rowClass = (i) =>
-    (i.remaining < 0 ? "passed" : i.remaining <= settings.warn ? "imminent" : i.remaining <= 300 ? "soon" : "") +
+    (i.arrived ? "imminent arrived" : i.remaining < 0 ? (i.pinned ? "" : "passed") : i.remaining <= settings.warn ? "imminent" : i.remaining <= 300 ? "soon" : "") +
     (i.pinned ? " pinned" : "");
   // "Hiện trước: Tất cả" → hiện luôn cả boss chưa có giờ (cột G lỗi / trống) ở cuối bảng
   const noTimeRows = maxSec === 0 ? state.noTime.filter((n) => !settings.hidden.has(n.group)) : [];
   const msg = state.error ||
     (!visible.length && !noTimeRows.length ? (maxSec > 0 ? `Không có boss nào ra trong ${settings.look / 60} tiếng tới (đổi ở ô "Hiện trước" trong Ẩn/Hiện)` : "Chưa có boss nào (kiểm tra link sheet hoặc đang ẩn hết server)") : null);
   if (msg) {
-    tb.innerHTML = `<tr><td class="empty" colspan="5">${esc(msg)}</td></tr>`;
+    tb.innerHTML = `<tr><td class="empty" colspan="5">${esc(msg)}</td></tr>`;   // 5 cột: tên, time ra, đếm ngược, time chết, icon
     state.sig = "";
   } else {
     // Chỉ dựng lại bảng khi danh sách đổi; còn lại chỉ cập nhật số đếm ngược
@@ -587,10 +610,10 @@ function tick() {
         const off = settings.muted.has(n.name);
         return `<tr class="notime">
           <td class="name" style="color:${colorOf(n.group)}">${esc(n.name)}</td>
-          <td class="ctl"><button class="bell${off ? " off" : ""}" data-name="${esc(n.name)}" title="${off ? "Đang TẮT chuông — bấm để bật lại" : "Đang bật chuông — bấm để tắt báo boss này"}">${off ? "🔕" : "🔔"}</button></td>
           <td class="num at">—</td>
           <td class="num cd lvl-x">Chưa có giờ</td>
           <td class="num death">${esc(n.death)}</td>
+          <td class="ctl">${bellBtn(n.name, off)}</td>
         </tr>`;
       }).join("");
       tb.innerHTML = visible.map((i) => {
@@ -600,22 +623,22 @@ function tick() {
         const vsel = settings.voiceByBoss[i.name];
         return `<tr class="${rowClass(i)}">
           <td class="name" style="color:${c}">${esc(i.name)}</td>
+          <td class="num at">${at}${i.day ? ` <span class="muted small">${i.day}</span>` : ""}</td>
+          <td class="num cd lvl-${cdLevel(i)}">${fmtCountdown(i)}</td>
+          <td class="num death">${esc(i.death)}</td>
           <td class="ctl">
-            <button class="bell${off ? " off" : ""}" data-name="${esc(i.name)}" title="${off ? "Đang TẮT chuông — bấm để bật lại" : "Đang bật chuông — bấm để tắt báo boss này"}">${off ? "🔕" : "🔔"}</button>
-            <button class="pin${i.pinned ? " on" : ""}" data-key="${esc(i.key)}" title="${i.pinned ? "Đang NEO — boss không bị ngắt. Bấm để bỏ neo" : "Neo boss lại (không bị ngắt) để đánh sau"}">📌</button>
+            ${bellBtn(i.name, off)}
+            <button class="pin${i.pinned ? " on" : ""}" data-key="${esc(i.key)}" title="${i.pinned ? "Đang NEO — boss nằm trên cùng, không bị ngắt. Bấm để bỏ neo" : "Neo boss lên đầu bảng (không bị ngắt) để đánh sau"}">📌</button>
             <span class="vbtn${vsel ? " set" : ""}" title="Chọn giọng đọc riêng cho boss này">🎙<select data-bvoice="${esc(i.name)}">${voiceOptions(vsel, "Theo server / mặc định")}</select></span>
           </td>
-          <td class="num at">${at}${i.day ? ` <span class="muted small">${i.day}</span>` : ""}</td>
-          <td class="num cd lvl-${cdLevel(i.remaining)}">${fmtCountdown(i.remaining)}</td>
-          <td class="num death">${esc(i.death)}</td>
         </tr>`;
       }).join("") + noTimeHtml;
     } else {
       visible.forEach((i, idx) => {
         const tr = tb.rows[idx];
         tr.className = rowClass(i);
-        tr.cells[3].className = `num cd lvl-${cdLevel(i.remaining)}`;
-        tr.cells[3].innerHTML = fmtCountdown(i.remaining);
+        tr.cells[2].className = `num cd lvl-${cdLevel(i)}`;
+        tr.cells[2].innerHTML = fmtCountdown(i);
       });
     }
   }
@@ -791,6 +814,22 @@ $("#volRange").addEventListener("input", (e) => {
   $("#volVal").textContent = settings.volume + "%";
   saveSettings();
 });
+// Bấm tiêu đề cột "Đếm ngược": bật/tắt loại bỏ những boss đã ra khỏi bảng
+function paintSortHeader() {
+  const th = $("#sortCd");
+  th.classList.toggle("active", settings.hideDone);
+  $("#sortMark").textContent = settings.hideDone ? "▲" : "⇅";
+  th.title = settings.hideDone ? "Đang ẨN boss đã ra (boss neo 📌 vẫn giữ). Bấm để hiện lại" : "Bấm để loại bỏ những boss đã ra";
+}
+$("#sortCd").addEventListener("click", () => {
+  settings.hideDone = !settings.hideDone;
+  saveSettings();
+  paintSortHeader();
+  state.sig = "";
+  tick();
+});
+paintSortHeader();
+
 $("#fullCol").value = settings.fullCol;
 $("#fullCol").addEventListener("change", async (e) => {
   settings.fullCol = e.target.value.trim().toUpperCase();
