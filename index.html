@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
   <title>Boss Alarm</title>
   <link rel="stylesheet" href="style.css?v=16">
 </head>
@@ -62,6 +63,7 @@
 
       <div class="prow">
         <label><input type="checkbox" id="beepChk"> Hô "Boss Boss" (giọng nữ)</label>
+        <label title='Báo trước đọc kiểu: "Ca sáu có boss", "Tê bảy xâm lược có boss"'><input type="checkbox" id="svChk"> Đọc tên server ("Ca sáu có boss")</label>
         <button id="testBtn" class="btn">▶ Thử</button>
         <label>🔊 Âm lượng
           <input type="range" id="volRange" min="0" max="100" step="5" style="width:110px;vertical-align:middle;accent-color:#4f8cff">
@@ -113,6 +115,6 @@
     <p class="muted small foot">Giữ tab này mở. Lần đầu phải bấm "Bật âm thanh" thì trình duyệt mới cho phát tiếng.</p>
   </div>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>

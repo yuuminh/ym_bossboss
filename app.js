@@ -18,6 +18,7 @@ const CONFIG = {
   COL_TIME:  "G",           // Tgian hồi sinh (dạng 12:42:00)
   COL_DEATH: "I",           // Giờ chết gần nhất (dạng 21/11 04:42:00)
 
+  BOSS_WORD: "boss",        // chữ "boss" trong câu "Ca sáu có boss" (nếu giọng đọc sai thì thử đổi thành "bót")
   CALL_PHRASE: "Boss Boss!", // câu hô (giọng nữ tiếng Anh, hô 2 lần như file ALRMCLOCK)
   WARN_SECONDS: 60,         // báo trước bao nhiêu giây (đổi được trên trang)
   REFRESH_SECONDS: 30,      // bao lâu tải lại sheet 1 lần
@@ -35,6 +36,7 @@ const settings = {
   voice: saved.voiceOn ?? false,       // ô tick "Đọc tên boss" (mặc định tắt: chỉ hô "Boss Boss")
   beep: saved.beep ?? true,            // nay là: hô "Boss boss"
   dingKind: saved.dingKind ?? "ding",   // kiểu âm báo khi boss ra: ding | ting | voice
+  serverCall: saved.serverCall ?? true,   // báo trước đọc kiểu "Ca sáu có boss"
   ding: saved.dingOn ?? false,         // ô tick "Bật âm báo khi boss ra": ding ding đúng lúc boss ra
   voiceName: saved.voiceName ?? "",
   hidden: new Set(saved.hidden ?? []),
@@ -88,6 +90,7 @@ function saveSettings() {
     warn: settings.warn, beep: settings.beep,
     voiceOn: settings.voice,
     dingOn: settings.ding,
+    serverCall: settings.serverCall,
     dingKind: settings.dingKind,
     voiceName: settings.voiceName,
     grace: settings.grace,
@@ -298,10 +301,17 @@ function enableAudio() {
 
 /* ---------------- Giọng đọc tiếng Việt ---------------- */
 // Tất cả giọng trong máy, giọng tiếng Việt xếp lên đầu
+// Giọng online của Google Dịch (tiếng Việt) — dùng được trên mọi trình duyệt, cần có mạng.
+// Đứng sau các giọng Việt cài sẵn trong máy (nếu có), nên máy nào có giọng Việt thì vẫn ưu tiên giọng đó.
+const GTTS = { name: "🌐 Google Dịch - tiếng Việt (online)", lang: "vi-VN", gtts: true };
+
 function allVoices() {
-  if (!("speechSynthesis" in window)) return [];
   const isVi = (v) => (/^vi/i.test(v.lang) ? 1 : 0);
-  return speechSynthesis.getVoices().slice().sort((a, b) => isVi(b) - isVi(a) || a.name.localeCompare(b.name));
+  const local = ("speechSynthesis" in window)
+    ? speechSynthesis.getVoices().slice().sort((a, b) => isVi(b) - isVi(a) || a.name.localeCompare(b.name))
+    : [];
+  local.splice(local.filter(isVi).length, 0, GTTS);
+  return local;
 }
 
 function findVoice(name) {
@@ -355,7 +365,27 @@ if ("speechSynthesis" in window) {
   speechSynthesis.onvoiceschanged = () => { fillVoices(); state.sig = ""; if (started) tick(); };
 }
 
+// Đọc bằng Google Dịch: các câu xếp hàng nói lần lượt, và chờ giọng của trình duyệt nói xong mới phát
+let gttsChain = Promise.resolve();
+function speakGoogle(text) {
+  gttsChain = gttsChain.then(() => new Promise((resolve) => {
+    let done = false;
+    const end = () => { if (!done) { done = true; resolve(); } };
+    const go = () => {
+      if ("speechSynthesis" in window && (speechSynthesis.speaking || speechSynthesis.pending)) return setTimeout(go, 150);
+      const a = new Audio("https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=" + encodeURIComponent(text));
+      a.volume = Math.min(1, settings.volume / 100);
+      a.onended = end;
+      a.onerror = () => { console.warn("Google Dịch không đọc được (mạng/bị chặn)"); end(); };
+      setTimeout(end, 15000);
+      a.play().catch(end);
+    };
+    go();
+  }));
+}
+
 function speak(text, voice) {
+  if (voice && voice.gtts) return speakGoogle(text);
   if (!("speechSynthesis" in window)) return;
   const u = new SpeechSynthesisUtterance(text);
   const v = voice || pickVoice();
@@ -409,6 +439,18 @@ function playDing() {
   });
 }
 
+// Phiên âm tên server để đọc: K6 → "Ca sáu", T7XL → "Tê bảy xâm lược"
+function serverPhrase(group) {
+  const letters = { K: "Ca", T: "Tê", L: "Lờ" };
+  const digits = ["không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"];
+  const g = String(group || "").replace(/[\s-]+/g, "").toUpperCase();
+  const m = g.match(/^([A-Z]+?)(\d+)(XL)?$/);
+  if (!m) return `${spokenName(String(group || ""))} có boss`;
+  const [, l, d, xl] = m;
+  const say = [...l].map((c) => letters[c] || c).join(" ");
+  return `${say} ${[...d].map((x) => digits[+x]).join(" ")}${xl ? " xâm lược" : ""} có ${CONFIG.BOSS_WORD}`;
+}
+
 // Âm báo lúc boss ra: "ding" | "ting" | "voice" (đọc "Boss ra")
 function playChime(kind) {
   if (kind === "voice") {
@@ -438,6 +480,15 @@ function announce(items) {
   if (synth) speechSynthesis.resume();
   if (settings.beep) {
     if (synth) { sayBoss(); sayBoss(); } else playDing();   // "Boss Boss! Boss Boss!"
+  }
+  // "Ca sáu có boss": mỗi server đọc 1 lần (nhiều boss cùng server cùng lúc thì gộp)
+  if (settings.serverCall && synth) {
+    const done = new Set();
+    items.forEach((it) => {
+      if (done.has(it.group)) return;
+      done.add(it.group);
+      speak(serverPhrase(it.group), voiceFor(it));
+    });
   }
   // rồi đọc tên từng boss, mỗi boss bằng giọng riêng của nó (các câu tự xếp hàng nói lần lượt)
   if (settings.voice && synth) items.forEach((it) => speak(spokenName(it.name), voiceFor(it)));
@@ -867,6 +918,8 @@ $("#dingSel").value = settings.dingKind;
 if ($("#dingSel").value !== settings.dingKind) { settings.dingKind = "ding"; $("#dingSel").value = "ding"; }
 $("#dingSel").addEventListener("change", (e) => { settings.dingKind = e.target.value; saveSettings(); enableAudio(); playChime(settings.dingKind); });
 $("#dingTest").addEventListener("click", () => { enableAudio(); playChime(settings.dingKind); });
+$("#svChk").checked = settings.serverCall;
+$("#svChk").addEventListener("change", (e) => { settings.serverCall = e.target.checked; saveSettings(); });
 $("#beepChk").checked = settings.beep;
 $("#beepChk").addEventListener("change", (e) => { settings.beep = e.target.checked; saveSettings(); });
 
