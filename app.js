@@ -10,7 +10,7 @@ const CONFIG = {
 
   // ID nằm trong link sheet: docs.google.com/spreadsheets/d/<SHEET_ID>/edit#gid=<GID>
   SHEET_ID: "1_1G2sCGX63sY6g01B2qBoGOu2WfmNDl3p7Yx_DzYsMc",
-  GID: "34062309",                 // số sau "gid=" trong link (tab chứa bảng boss)
+  GID: "1206146091",                 // số sau "gid=" trong link (tab chứa bảng boss)
 
   // Cột trong sheet (theo chữ cái ở đầu bảng)
   COL_GROUP: "B",           // SV (T7, L2, K6, L7...)
