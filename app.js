@@ -36,7 +36,10 @@ const settings = {
   voice: saved.voiceOn ?? false,       // ô tick "Đọc tên boss" (mặc định tắt: chỉ hô "Boss Boss")
   beep: saved.beep ?? true,            // nay là: hô "Boss boss"
   dingKind: saved.dingKind ?? "ding",   // kiểu âm báo khi boss ra: ding | ting | voice
-  serverCall: saved.serverCall ?? true,   // báo trước đọc kiểu "Ca sáu có boss"
+  serverCall: saved.serverCall ?? false,   // ô tick "Đọc tên server" (mặc định tắt): "Ca sáu có boss"
+  beepVoice: saved.beepVoice ?? "female",  // giọng hô Boss Boss: female | male
+  serverVoice: saved.serverVoice ?? "",    // giọng đọc tên server ("" = giống giọng đọc tên boss)
+  dingVoice: saved.dingVoice ?? "",         // giọng đọc "Boss ra" ("" = giống giọng đọc tên boss)
   ding: saved.dingOn ?? false,         // ô tick "Bật âm báo khi boss ra": ding ding đúng lúc boss ra
   voiceName: saved.voiceName ?? "",
   hidden: new Set(saved.hidden ?? []),
@@ -91,6 +94,9 @@ function saveSettings() {
     voiceOn: settings.voice,
     dingOn: settings.ding,
     serverCall: settings.serverCall,
+    beepVoice: settings.beepVoice,
+    serverVoice: settings.serverVoice,
+    dingVoice: settings.dingVoice,
     dingKind: settings.dingKind,
     voiceName: settings.voiceName,
     grace: settings.grace,
@@ -325,8 +331,8 @@ function pickVoice() {
 }
 
 // Giọng cho 1 boss: giọng riêng của boss → giọng của server → giọng mặc định
-function voiceFor(it) {
-  return findVoice(settings.voiceByBoss[it.name]) || findVoice(settings.voiceByGroup[it.group]) || pickVoice();
+function voiceFor(it, rowVoiceName) {
+  return findVoice(settings.voiceByBoss[it.name]) || findVoice(settings.voiceByGroup[it.group]) || findVoice(rowVoiceName) || pickVoice();
 }
 
 function voiceOptions(selected, defaultLabel) {
@@ -336,6 +342,9 @@ function voiceOptions(selected, defaultLabel) {
 }
 
 function fillVoices() {
+  const optDefault = "Mặc định (như giọng đọc tên boss)";
+  $("#svVoiceSel").innerHTML = voiceOptions(settings.serverVoice, optDefault);
+  $("#dingVoiceSel").innerHTML = voiceOptions(settings.dingVoice, optDefault);
   const sel = $("#voiceSel");
   const list = allVoices();
   if (!list.length) {
@@ -352,13 +361,16 @@ function fillVoices() {
 
 // Giọng riêng cho từng server (trong khung Ẩn/Hiện)
 function renderGroupVoices() {
-  const box = $("#groupVoices");
+  const box = $("#serverCfg");
   if (!box) return;
-  box.innerHTML = [...state.groups].sort().map((g) =>
-    `<span class="colorpick" style="color:${colorOf(g)}">${esc(g)} ` +
-    `<select data-gvoice="${esc(g)}">${voiceOptions(settings.voiceByGroup[g], "Mặc định")}</select>` +
-    `<button class="btn mini" data-gplay="${esc(g)}" title="Nghe thử giọng của ${esc(g)}">▶</button></span>`
-  ).join("") || '<span class="muted small">(có sheet rồi sẽ hiện)</span>';
+  // chỉ vẽ lại phần giọng + màu chữ tên server, giữ nguyên ô gõ mã màu đang nhập
+  box.querySelectorAll(".srow").forEach((row) => {
+    const g = row.dataset.row;
+    row.querySelector(".sname").style.color = colorOf(g);
+    row.querySelector(".vpart").innerHTML =
+      `<select data-gvoice="${esc(g)}">${voiceOptions(settings.voiceByGroup[g], "Mặc định")}</select>` +
+      `<button class="btn mini" data-gplay="${esc(g)}" title="Nghe thử giọng của ${esc(g)}">▶</button>`;
+  });
 }
 
 if ("speechSynthesis" in window) {
@@ -405,18 +417,22 @@ function spokenName(name) {
 }
 
 // Câu hô "Boss Boss!" — giống file ALRMCLOCK_v5: giọng nữ tiếng Anh, pitch cao
-function englishFemaleVoice() {
+function englishVoice(gender) {
   const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
-  return voices.find((v) => /zira|samantha|karen|moira|susan|victoria|fiona|tessa/i.test(v.name)) || voices[0] || null;
+  const isF = (v) => /female|zira|samantha|karen|moira|susan|victoria|fiona|tessa|hazel|aria|jenny|catherine|linda|heera/i.test(v.name);
+  const isM = (v) => !/female/i.test(v.name) && /male|david|mark|james|daniel|alex|fred|george|guy|ryan|thomas|richard|rishi|oliver|aaron|arthur/i.test(v.name);
+  if (gender === "male") return voices.find(isM) || voices.find((v) => !isF(v)) || voices[0] || null;
+  return voices.find(isF) || voices[0] || null;
 }
 
 function sayBoss() {
   const u = new SpeechSynthesisUtterance(CONFIG.CALL_PHRASE);
   u.lang = "en-US";
-  const v = englishFemaleVoice();
+  const male = settings.beepVoice === "male";
+  const v = englishVoice(male ? "male" : "female");
   if (v) u.voice = v;
-  u.pitch = 1.8;
-  u.rate = 1.1;
+  u.pitch = male ? 0.9 : 1.8;
+  u.rate = male ? 1 : 1.1;
   u.volume = settings.volume / 100;
   speechSynthesis.speak(u);
 }
@@ -454,7 +470,7 @@ function serverPhrase(group) {
 // Âm báo lúc boss ra: "ding" | "ting" | "voice" (đọc "Boss ra")
 function playChime(kind) {
   if (kind === "voice") {
-    if ("speechSynthesis" in window) { speechSynthesis.resume(); speak("Boss ra"); }
+    if ("speechSynthesis" in window) { speechSynthesis.resume(); speak("Boss ra", voiceFor({ name: "", group: "" }, settings.dingVoice)); }
     return;
   }
   if (kind !== "ting") return playDing();
@@ -487,7 +503,7 @@ function announce(items) {
     items.forEach((it) => {
       if (done.has(it.group)) return;
       done.add(it.group);
-      speak(serverPhrase(it.group), voiceFor(it));
+      speak(serverPhrase(it.group), voiceFor(it, settings.serverVoice));
     });
   }
   // rồi đọc tên từng boss, mỗi boss bằng giọng riêng của nó (các câu tự xếp hàng nói lần lượt)
@@ -742,11 +758,13 @@ function renderFilters() {
   $("#filters").innerHTML = [...state.groups].sort().map((g) =>
     `<span class="chip" data-g="${esc(g)}" style="${chipStyle(g)}">${esc(g)}</span>`
   ).join("");
-  // Chọn màu từng server: nằm trong khung Ẩn/Hiện
-  $("#colorPickers").innerHTML = [...state.groups].sort().map((g) =>
-    `<span class="colorpick">${esc(g)} <input type="color" data-color="${esc(g)}" value="${colorOf(g)}">` +
-    `<input type="text" class="hex" data-hex="${esc(g)}" value="${colorOf(g)}" maxlength="7" spellcheck="false" placeholder="#rrggbb" title="Dán mã màu hex, ví dụ #ff6b6b"></span>`
-  ).join("");
+  // Màu + giọng đọc của từng server: mỗi server 1 dòng, nằm trong bảng cài đặt
+  $("#serverCfg").innerHTML = [...state.groups].sort().map((g) =>
+    `<div class="srow" data-row="${esc(g)}"><span class="sname" style="color:${colorOf(g)}">${esc(g)}</span>` +
+    `<input type="color" data-color="${esc(g)}" value="${colorOf(g)}">` +
+    `<input type="text" class="hex" data-hex="${esc(g)}" value="${colorOf(g)}" maxlength="7" spellcheck="false" placeholder="#rrggbb" title="Dán mã màu hex, ví dụ #ff6b6b">` +
+    `<span class="vpart"></span></div>`
+  ).join("") || '<span class="muted small">(có sheet rồi sẽ hiện)</span>';
   renderGroupVoices();
 }
 
@@ -773,8 +791,8 @@ function setGroupColor(g, hex, source) {
   const chip = $(`#filters .chip[data-g="${CSS.escape(g)}"]`);
   if (chip) chip.setAttribute("style", chipStyle(g));
   // đồng bộ 2 ô (ô chọn màu và ô gõ mã) với nhau
-  const picker = $(`#colorPickers [data-color="${CSS.escape(g)}"]`);
-  const text = $(`#colorPickers [data-hex="${CSS.escape(g)}"]`);
+  const picker = $(`#serverCfg [data-color="${CSS.escape(g)}"]`);
+  const text = $(`#serverCfg [data-hex="${CSS.escape(g)}"]`);
   if (picker && source !== "picker") picker.value = hex;
   if (text && source !== "text") text.value = hex;
   renderGroupVoices();
@@ -782,7 +800,7 @@ function setGroupColor(g, hex, source) {
   tick();
 }
 
-$("#colorPickers").addEventListener("input", (e) => {
+$("#serverCfg").addEventListener("input", (e) => {
   const d = e.target.dataset || {};
   if (d.color) {
     setGroupColor(d.color, e.target.value, "picker");
@@ -794,7 +812,7 @@ $("#colorPickers").addEventListener("input", (e) => {
 });
 
 // Rời ô gõ mã: chuẩn hóa lại cho gọn (hoặc trả về màu đang dùng nếu gõ sai)
-$("#colorPickers").addEventListener("change", (e) => {
+$("#serverCfg").addEventListener("change", (e) => {
   const g = e.target.dataset && e.target.dataset.hex;
   if (!g) return;
   e.target.value = normHex(e.target.value) || settings.colors[g];
@@ -847,7 +865,7 @@ $("#list").addEventListener("change", (e) => {
 });
 
 // Chọn giọng riêng cho 1 server (trong khung Ẩn/Hiện)
-$("#groupVoices").addEventListener("change", (e) => {
+$("#serverCfg").addEventListener("change", (e) => {
   const g = e.target.dataset && e.target.dataset.gvoice;
   if (!g) return;
   if (e.target.value) settings.voiceByGroup[g] = e.target.value;
@@ -857,7 +875,7 @@ $("#groupVoices").addEventListener("change", (e) => {
 });
 
 // Bấm ▶ cạnh ô chọn giọng của server để nghe thử
-$("#groupVoices").addEventListener("click", (e) => {
+$("#serverCfg").addEventListener("click", (e) => {
   const b = e.target.closest("[data-gplay]");
   if (b) previewVoice(null, b.dataset.gplay);
 });
@@ -873,9 +891,24 @@ function previewVoice(bossName, group, voiceName) {
 }
 
 $("#enableBtn").addEventListener("click", enableAudio);
-$("#testBtn").addEventListener("click", () => {
+// Boss mẫu để nghe thử (lấy boss đầu bảng, không có thì T7-Katan)
+function sampleBoss() {
+  const b = state.bosses[0];
+  return b ? { name: b.name, group: b.group } : { name: "T7-Katan", group: "T7" };
+}
+$("#testBtn").addEventListener("click", () => {      // thử "Boss Boss"
   enableAudio();
-  announce([{ name: "T7-Cruma Ô Uế", group: "T7" }]);
+  if ("speechSynthesis" in window) { speechSynthesis.resume(); sayBoss(); sayBoss(); } else playDing();
+});
+$("#svTest").addEventListener("click", () => {       // thử đọc tên server
+  enableAudio();
+  const s = sampleBoss();
+  speak(serverPhrase(s.group), voiceFor(s, settings.serverVoice));
+});
+$("#nameTest").addEventListener("click", () => {     // thử đọc tên boss
+  enableAudio();
+  const s = sampleBoss();
+  speak(spokenName(s.name), voiceFor(s));
 });
 
 $("#volRange").value = String(settings.volume);
@@ -916,8 +949,14 @@ $("#dingChk").checked = settings.ding;
 $("#dingChk").addEventListener("change", (e) => { settings.ding = e.target.checked; saveSettings(); if (e.target.checked) { enableAudio(); playChime(settings.dingKind); } });
 $("#dingSel").value = settings.dingKind;
 if ($("#dingSel").value !== settings.dingKind) { settings.dingKind = "ding"; $("#dingSel").value = "ding"; }
-$("#dingSel").addEventListener("change", (e) => { settings.dingKind = e.target.value; saveSettings(); enableAudio(); playChime(settings.dingKind); });
+const syncDingVoice = () => { $("#dingVoiceSel").disabled = settings.dingKind !== "voice"; };
+syncDingVoice();
+$("#dingSel").addEventListener("change", (e) => { settings.dingKind = e.target.value; saveSettings(); syncDingVoice(); enableAudio(); playChime(settings.dingKind); });
 $("#dingTest").addEventListener("click", () => { enableAudio(); playChime(settings.dingKind); });
+$("#beepVoiceSel").value = settings.beepVoice;
+$("#beepVoiceSel").addEventListener("change", (e) => { settings.beepVoice = e.target.value; saveSettings(); });
+$("#svVoiceSel").addEventListener("change", (e) => { settings.serverVoice = e.target.value; saveSettings(); });
+$("#dingVoiceSel").addEventListener("change", (e) => { settings.dingVoice = e.target.value; saveSettings(); });
 $("#svChk").checked = settings.serverCall;
 $("#svChk").addEventListener("change", (e) => { settings.serverCall = e.target.checked; saveSettings(); });
 $("#beepChk").checked = settings.beep;

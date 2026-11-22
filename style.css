@@ -85,6 +85,20 @@ td.ctl { white-space: nowrap; padding: 3px 4px; width: 1%; }
 .pin { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 3px; opacity: .3; filter: grayscale(1); }
 .pin:hover { opacity: .8; }
 .pin.on { opacity: 1; filter: none; }
+/* tiêu đề + thanh âm lượng nằm dưới tên */
+.brand { display: flex; flex-direction: column; gap: 3px; flex: 0 0 auto; }
+.brand .vol { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.brand .vol input[type=range] { width: 110px; padding: 0; accent-color: #4f8cff; }
+.prow select { max-width: 200px; }
+/* mỗi server 1 dòng: tên · màu · mã hex · giọng đọc · nghe thử */
+.srows { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 6px 16px; }
+.srow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.srow .sname { font-weight: 700; min-width: 42px; }
+.srow input[type=color] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; flex: none; }
+.srow input.hex { width: 72px; flex: none; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+.srow input.hex.bad { border-color: var(--danger); }
+.srow .vpart { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex: 1; }
+.srow select { min-width: 0; max-width: 150px; font-size: 12px; padding: 2px 4px; }
 tr.notime { opacity: .6; }
 tr.pinned { background: rgba(255, 255, 255, .05); box-shadow: inset 3px 0 0 #f2c94c; }
 .colorpick select { max-width: 150px; font-size: 12px; padding: 2px 4px; }
