@@ -68,8 +68,9 @@ td {
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.name { font-weight: 600; min-width: 150px; }
 td.ctl { white-space: nowrap; padding: 3px 4px; width: 1%; }
-.bell { background: none; border: none; cursor: pointer; font-size: 17px; line-height: 1; padding: 2px 3px; }
-.bell.off { opacity: .45; }
+.bell { background: none; border: none; cursor: pointer; font-size: 17px; line-height: 1; padding: 2px 3px; color: #b4bccd; }
+.bell:hover { color: #fff; }
+.bell.off { color: #7a849a; opacity: .7; }
 .vbtn { position: relative; display: inline-block; width: 22px; text-align: center; cursor: pointer; opacity: .4; font-size: 14px; }
 .vbtn.set { opacity: 1; }
 .vbtn:hover { opacity: 1; }
@@ -100,6 +101,7 @@ td.cd.lvl-w { color: #e4e8f0; }   /* trên 15 phút: trắng */
 td.cd.lvl-m { color: #f2a65a; }   /* 5 – 15 phút: cam */
 td.cd.lvl-r { color: #ff7b7b; }   /* dưới 5 phút: đỏ */
 td.cd.lvl-x { color: #9aa3b5; }   /* đã ra: xám */
+td.cd.lvl-n { color: #ff1a1a; font-weight: 800; }   /* đúng phút boss ra ("Đến giờ"): đỏ đậm */
 td.death { color: var(--muted); font-size: 13px; }
 tr.imminent { background: #2b1d22; animation: pulse 1s infinite; }
 tr.passed { opacity: .5; }

@@ -275,7 +275,7 @@ async function loadSheet() {
     state.noTime = noTime;
     state.dated = dated;
     state.mode = mode;
-    state.groups = new Set([...bosses, ...noTime].map((b) => b.group));
+    state.groups = new Set(bosses.map((b) => b.group));   // chỉ server có boss đã có giờ
     state.lastFetch = new Date();
     state.error = bosses.length ? null : "Đọc được sheet nhưng không thấy dòng nào có giờ hợp lệ (kiểm tra cột/GID)";
     renderFilters();
@@ -466,7 +466,10 @@ function fmtCountdown(i) {
     if (h) return m ? `Đã ra ${n(h)} giờ ${n(m)} phút` : `Đã ra ${n(h)} giờ`;
     return `Đã ra ${n(t)} phút`;
   }
-  if (sec < 60) return `Còn ${n(sec)} giây`;
+  if (sec < 120) {                    // dưới 2 phút: hiện cả giây
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m ? `Còn ${n(m)} phút ${n(pad(s))} giây` : `Còn ${n(s)} giây`;
+  }
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
   if (h) return m ? `Còn ${n(h)} giờ ${n(m)} phút` : `Còn ${n(h)} giờ`;
   return `Còn ${n(m)} phút`;
@@ -594,7 +597,7 @@ function tick() {
     (i.arrived ? "imminent arrived" : i.remaining < 0 ? (i.pinned ? "" : "passed") : i.remaining <= settings.warn ? "imminent" : i.remaining <= 300 ? "soon" : "") +
     (i.pinned ? " pinned" : "");
   // "Hiện trước: Tất cả" → hiện luôn cả boss chưa có giờ (cột G lỗi / trống) ở cuối bảng
-  const noTimeRows = maxSec === 0 ? state.noTime.filter((n) => !settings.hidden.has(n.group)) : [];
+  const noTimeRows = [];   // boss chưa có giờ: ẩn hẳn, có giờ rồi sẽ tự hiện
   const msg = state.error ||
     (!visible.length && !noTimeRows.length ? (maxSec > 0 ? `Không có boss nào ra trong ${settings.look / 60} tiếng tới (đổi ở ô "Hiện trước" trong Ẩn/Hiện)` : "Chưa có boss nào (kiểm tra link sheet hoặc đang ẩn hết server)") : null);
   if (msg) {
@@ -654,7 +657,7 @@ function tick() {
   $("#status").textContent = state.lastFetch
     ? `Cập nhật sheet lúc ${state.lastFetch.toLocaleTimeString("vi-VN")} · hiện ${visible.length}/${state.bosses.length} boss có giờ` +
       ` · ${state.dated}/${state.bosses.length} boss có ngày` +
-      (nt ? ` · ${nt} boss chưa có giờ${maxSec === 0 ? " (đang hiện ở cuối bảng)" : ' (chọn "Hiện trước: Tất cả" để xem)'}` : "")
+      (nt ? ` · ${nt} boss chưa có giờ (đang ẩn)` : "")
     : "Đang tải sheet…";
 }
 
