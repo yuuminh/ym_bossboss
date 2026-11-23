@@ -419,8 +419,52 @@ function warnPhrase(s) {
   return s % 60 === 0 ? `${s / 60} phút` : `${s} giây`;
 }
 
+// Cách đọc tên boss (phần sau dấu "-"). Không có trong danh sách thì đọc nguyên chữ. Muốn sửa / thêm cứ thêm 1 dòng.
+const PRONOUNCE = {
+  "Andras": "an đrát",
+  "Core Susceptor": "xê bảy",
+  "Cruma Ô Uế": "xê bốn",
+  "Gương của sự lãng quên": "Gương",
+  "Hysilome": "Hiệp sĩ lợn",
+  "Katan": "xê sáu",
+  "Kelsus": "kêu xớt",
+  "Orfen": "O phen",
+  "Pan Dra'eed": "pan đờ ré",
+  "Phoenix": "Phe nít",
+  "Quái đột biến Cruma": "Đầm cờ-ru-ma",
+  "Randor": "ran đo",
+  "Savan": "kiến hai",
+  "Selu": "xê lu",
+  "Talkin": "lệ tổ",
+  "Tempest": "tem pét",
+  "Thanatos": "tha na tót",
+  "Timiniel": "ti mi neo",
+};
+// so khớp không phân biệt hoa/thường, dấu, kiểu dấu nháy
+const normName = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").replace(/[’‘`´]/g, "'").toLowerCase().replace(/\s+/g, " ").trim();
+const PRON_MAP = new Map(Object.entries(PRONOUNCE).map(([k, v]) => [normName(k), v]));
+
+// K6 → "Ca sáu", T7XL → "Tê bảy xâm lược" (không khớp dạng chữ+số thì trả về null)
+function serverWords(group) {
+  const letters = { K: "Ca", T: "Tê", L: "Lờ" };
+  const digits = ["không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"];
+  const g = String(group || "").replace(/[\s-]+/g, "").toUpperCase();
+  const m = g.match(/^([A-Z]+?)(\d+)(XL)?$/);
+  if (!m) return null;
+  const [, l, d, xl] = m;
+  const say = [...l].map((c) => letters[c] || c).join(" ");
+  return `${say} ${[...d].map((x) => digits[+x]).join(" ")}${xl ? " xâm lược" : ""}`;
+}
+
+// "T7-Katan" → "Tê bảy xê sáu"; "K6XL-Andras" → "Ca sáu xâm lược an đrát"
 function spokenName(name) {
-  return name.replace(/-/g, " ");
+  name = String(name || "");
+  const i = name.lastIndexOf("-");
+  const group = i > 0 ? name.slice(0, i).trim() : "";
+  const boss = (i > 0 ? name.slice(i + 1) : name).trim();
+  const bossSay = PRON_MAP.get(normName(boss)) || boss;
+  const gs = group ? (serverWords(group) || group) : "";
+  return `${gs} ${bossSay}`.trim();
 }
 
 // Câu hô "Boss Boss!" — giống file ALRMCLOCK_v5: giọng nữ tiếng Anh, pitch cao
@@ -464,14 +508,8 @@ function playDing() {
 
 // Phiên âm tên server để đọc: K6 → "Ca sáu", T7XL → "Tê bảy xâm lược"
 function serverPhrase(group) {
-  const letters = { K: "Ca", T: "Tê", L: "Lờ" };
-  const digits = ["không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"];
-  const g = String(group || "").replace(/[\s-]+/g, "").toUpperCase();
-  const m = g.match(/^([A-Z]+?)(\d+)(XL)?$/);
-  if (!m) return `${spokenName(String(group || ""))} có boss`;
-  const [, l, d, xl] = m;
-  const say = [...l].map((c) => letters[c] || c).join(" ");
-  return `${say} ${[...d].map((x) => digits[+x]).join(" ")}${xl ? " xâm lược" : ""} có ${CONFIG.BOSS_WORD}`;
+  const w = serverWords(group);
+  return `${w || String(group || "").replace(/-/g, " ")} có ${CONFIG.BOSS_WORD}`;
 }
 
 // Âm báo lúc boss ra: "ding" | "ting" | "voice" (đọc "Boss ra")
