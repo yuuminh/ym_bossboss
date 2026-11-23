@@ -424,10 +424,12 @@ function warnPhrase(s) {
 // Cách đọc tên boss (phần sau dấu "-"). Không có trong danh sách thì đọc nguyên chữ. Muốn sửa / thêm cứ thêm 1 dòng.
 const PRONOUNCE = {
   "Andras": "an đrát",
+  "Behemoth": "be he mót",
+  "Chertuba": "chê tu ba",
   "Core Susceptor": "xê bảy",
   "Cruma Ô Uế": "xê bốn",
   "Gương của sự lãng quên": "Gương",
-  "Hysilome": "Hiệp sĩ lợn",
+  "Hysilome": "Hiệp sỉ lợn",
   "Katan": "xê sáu",
   "Kelsus": "kêu xớt",
   "Orfen": "O phen",
@@ -759,7 +761,7 @@ function tick() {
         const vsel = settings.voiceByBoss[i.name];
         return `<tr class="${rowClass(i)}">
           <td class="name" style="color:${c}">${esc(i.name)}</td>
-          <td class="num at">${at}${i.day ? ` <span class="muted small">${i.day}</span>` : ""}</td>
+          <td class="num at">${at}${i.day ? ` <span class="muted small">${i.day}</span>` : ""}<button type="button" class="copybtn" data-name="${esc(i.name)}" data-at="${at}" title="Copy tên boss + time ra (để dán vào chat game)">📋</button></td>
           <td class="num cd lvl-${cdLevel(i)}">${fmtCountdown(i)}</td>
           <td class="num death">${esc(i.death)}</td>
           <td class="ctl">
@@ -906,6 +908,29 @@ setPanel(settings.panel);
 
 // Bấm chuông 🔔 sau tên boss: tắt / bật báo cho boss đó.
 // Bấm ghim 📌: neo boss lại, không bị ngắt (để đánh sau); bấm lần nữa để bỏ neo.
+// Nút 📋: copy "Tên-boss<tab>giờ ra" để dán vào chat game, ví dụ  K6XL-Tempest	19:04:00
+// (muốn đổi dấu ngăn cách thì sửa "\t" thành " " hoặc " - " ở dòng dưới)
+const copyFormat = (name, at) => `${name}\t${at}`;
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* thử cách dự phòng */ }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.cssText = "position:fixed;opacity:0;top:0;left:0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) {}
+  ta.remove();
+  return ok;
+}
+$("#list").addEventListener("click", async (e) => {
+  const b = e.target.closest(".copybtn");
+  if (!b) return;
+  const ok = await copyText(copyFormat(b.dataset.name, b.dataset.at));
+  b.textContent = ok ? "✅" : "⚠️";
+  setTimeout(() => { b.textContent = "📋"; }, 1200);
+});
+
 $("#list").addEventListener("click", (e) => {
   const pin = e.target.closest(".pin");
   if (pin) {

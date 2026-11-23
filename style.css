@@ -91,6 +91,8 @@ td.ctl { white-space: nowrap; padding: 3px 4px; width: 1%; }
 .brand .volbtn { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
 .brand .vol input[type=range] { width: 110px; padding: 0; accent-color: #4f8cff; }
 .prow select { max-width: 200px; }
+.copybtn { background: none; border: none; cursor: pointer; font-size: 13px; line-height: 1; padding: 0 2px; margin-left: 6px; opacity: .55; }
+.copybtn:hover { opacity: 1; }
 .btn.danger { border-color: #7a3a3c; color: #ff9a9c; }
 .btn.danger:hover { background: #3a2128; }
 .srow .gbell { flex: none; }
