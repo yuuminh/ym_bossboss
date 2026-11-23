@@ -91,8 +91,11 @@ td.ctl { white-space: nowrap; padding: 3px 4px; width: 1%; }
 .brand .volbtn { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
 .brand .vol input[type=range] { width: 110px; padding: 0; accent-color: #4f8cff; }
 .prow select { max-width: 200px; }
+.btn.danger { border-color: #7a3a3c; color: #ff9a9c; }
+.btn.danger:hover { background: #3a2128; }
+.srow .gbell { flex: none; }
 /* mỗi server 1 dòng: tên · màu · mã hex · giọng đọc · nghe thử */
-.srows { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 6px 16px; }
+.srows { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 6px 16px; }
 .srow { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .srow .sname { font-weight: 700; min-width: 42px; }
 .srow input[type=color] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; flex: none; }

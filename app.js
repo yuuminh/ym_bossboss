@@ -46,6 +46,7 @@ const settings = {
   voiceName: saved.voiceName ?? "",
   hidden: new Set(saved.hidden ?? []),
   muted: new Set(saved.muted ?? []),   // boss bị tắt chuông (lưu theo tên)
+  mutedGroups: new Set(saved.mutedGroups ?? []),   // server bị tắt báo (vẫn hiện trong bảng, chỉ không kêu)
   voiceByBoss: saved.voiceByBoss ?? {},    // giọng riêng từng boss: { "T7-Katan": "tên giọng" }
   voiceByGroup: saved.voiceByGroup ?? {},  // giọng riêng từng server: { T7: "tên giọng" }
   grace: saved.grace ?? CONFIG.PASSED_GRACE_MINUTES,   // boss đã ra, ngắt khỏi đầu bảng sau bao nhiêu phút
@@ -115,6 +116,7 @@ function saveSettings() {
     panel: settings.panel,
     hidden: [...settings.hidden],
     muted: [...settings.muted],
+    mutedGroups: [...settings.mutedGroups],
     voiceByBoss: settings.voiceByBoss,
     voiceByGroup: settings.voiceByGroup,
   }));
@@ -596,8 +598,10 @@ function fmtCountdown(i) {
 // Icon chuông màu trắng (SVG); tắt chuông thì xám mờ và có gạch chéo
 const BELL_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22zm6.8-6.2V11c0-3.1-1.7-5.7-4.6-6.4V4a2.2 2.2 0 1 0-4.4 0v.6C6.9 5.3 5.2 7.9 5.2 11v4.8L3 18v1h18v-1l-2.2-2.2z"/></svg>';
 const BELL_OFF_SVG = BELL_SVG.replace("</svg>", '<path d="M3.5 3.5 20.5 20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>');
-function bellBtn(name, off) {
-  return `<button class="bell${off ? " off" : ""}" data-name="${esc(name)}" title="${off ? "Đang TẮT chuông — bấm để bật lại" : "Đang bật chuông — bấm để tắt báo boss này"}">${off ? BELL_OFF_SVG : BELL_SVG}</button>`;
+function bellBtn(name, off, gOff) {
+  const tip = gOff ? "Server này đang TẮT báo (bật lại ở bảng cài đặt hoặc bấm chuông của server)"
+    : off ? "Đang TẮT chuông — bấm để bật lại" : "Đang bật chuông — bấm để tắt báo boss này";
+  return `<button class="bell${off ? " off" : ""}" data-name="${esc(name)}" title="${tip}">${off ? BELL_OFF_SVG : BELL_SVG}</button>`;
 }
 
 function esc(s) {
@@ -653,7 +657,7 @@ function tick() {
   for (const it of items) {
     if (it.remaining <= settings.warn && it.remaining > -30 && !state.alerted.has(it.key)) {
       state.alerted.add(it.key);
-      if (!settings.muted.has(it.name)) toAnnounce.push({ name: it.name, group: it.group });
+      if (!settings.muted.has(it.name) && !settings.mutedGroups.has(it.group)) toAnnounce.push({ name: it.name, group: it.group });
     }
   }
   if (toAnnounce.length && state.enabled) announce(toAnnounce);
@@ -663,7 +667,7 @@ function tick() {
   for (const it of items) {
     if (it.remaining <= 0 && it.remaining > -30 && !state.dinged.has(it.key)) {
       state.dinged.add(it.key);
-      if (settings.ding && !settings.muted.has(it.name)) dingNow = true;
+      if (settings.ding && !settings.muted.has(it.name) && !settings.mutedGroups.has(it.group)) dingNow = true;
     }
   }
   if (dingNow && state.enabled) playChime(settings.dingKind);
@@ -734,7 +738,7 @@ function tick() {
   } else {
     // Chỉ dựng lại bảng khi danh sách đổi; còn lại chỉ cập nhật số đếm ngược
     // (để click không bị mất do bảng bị vẽ lại mỗi giây)
-    const sig = visible.map((i) => i.key + i.day +(settings.muted.has(i.name) ? "1" : "0") + (i.pinned ? "P" : "") + (settings.voiceByBoss[i.name] || "")).join("#") + "|" + noTimeRows.map((n) => n.name + (settings.muted.has(n.name) ? "1" : "0")).join("#");
+    const sig = visible.map((i) => i.key + i.day +(settings.muted.has(i.name) ? "1" : "0") + (settings.mutedGroups.has(i.group) ? "G" : "") + (i.pinned ? "P" : "") + (settings.voiceByBoss[i.name] || "")).join("#") + "|" + noTimeRows.map((n) => n.name + (settings.muted.has(n.name) ? "1" : "0")).join("#");
     if (sig !== state.sig) {
       state.sig = sig;
       const noTimeHtml = noTimeRows.map((n) => {
@@ -750,7 +754,8 @@ function tick() {
       tb.innerHTML = visible.map((i) => {
         const at = `${pad(i.h)}:${pad(i.m)}:${pad(i.s)}`;
         const c = colorOf(i.group);   // màu chữ của server (trùng màu nút server)
-        const off = settings.muted.has(i.name);
+        const gOff = settings.mutedGroups.has(i.group);
+        const off = settings.muted.has(i.name) || gOff;
         const vsel = settings.voiceByBoss[i.name];
         return `<tr class="${rowClass(i)}">
           <td class="name" style="color:${c}">${esc(i.name)}</td>
@@ -758,7 +763,7 @@ function tick() {
           <td class="num cd lvl-${cdLevel(i)}">${fmtCountdown(i)}</td>
           <td class="num death">${esc(i.death)}</td>
           <td class="ctl">
-            ${bellBtn(i.name, off)}
+            ${bellBtn(i.name, off, gOff)}
             <button class="pin${i.pinned ? " on" : ""}" data-key="${esc(i.key)}" title="${i.pinned ? "Đang NEO — boss nằm trên cùng, không bị ngắt. Bấm để bỏ neo" : "Neo boss lên đầu bảng (không bị ngắt) để đánh sau"}">📌</button>
             <span class="vbtn${vsel ? " set" : ""}" title="Chọn giọng đọc riêng cho boss này">🎙<select data-bvoice="${esc(i.name)}">${voiceOptions(vsel, "Theo server / mặc định")}</select></span>
           </td>
@@ -799,19 +804,44 @@ function chipStyle(g) {
     : `background:${c};border-color:${c};color:${textOn(c)}`;
 }
 
+// Chuông bật/tắt nhanh báo cho cả 1 server (vẫn hiện trong bảng, chỉ không kêu)
+function gBellBtn(g) {
+  const off = settings.mutedGroups.has(g);
+  return `<button type="button" class="bell gbell${off ? " off" : ""}" data-gbell="${esc(g)}" title="${off ? `Đang TẮT báo server ${esc(g)} — bấm để bật` : `Đang bật báo server ${esc(g)} — bấm để tắt`}">${off ? BELL_OFF_SVG : BELL_SVG}</button>`;
+}
+
 function renderFilters() {
   $("#filters").innerHTML = [...state.groups].sort().map((g) =>
     `<span class="chip" data-g="${esc(g)}" style="${chipStyle(g)}">${esc(g)}</span>`
   ).join("");
   // Màu + giọng đọc của từng server: mỗi server 1 dòng, nằm trong bảng cài đặt
   $("#serverCfg").innerHTML = [...state.groups].sort().map((g) =>
-    `<div class="srow" data-row="${esc(g)}"><span class="sname" style="color:${colorOf(g)}">${esc(g)}</span>` +
+    `<div class="srow" data-row="${esc(g)}">${gBellBtn(g)}<span class="sname" style="color:${colorOf(g)}">${esc(g)}</span>` +
     `<input type="color" data-color="${esc(g)}" value="${colorOf(g)}">` +
     `<input type="text" class="hex" data-hex="${esc(g)}" value="${colorOf(g)}" maxlength="7" spellcheck="false" placeholder="#rrggbb" title="Dán mã màu hex, ví dụ #ff6b6b">` +
     `<span class="vpart"></span></div>`
   ).join("") || '<span class="muted small">(có sheet rồi sẽ hiện)</span>';
   renderGroupVoices();
 }
+
+$("#serverCfg").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-gbell]");
+  if (!b) return;
+  const g = b.dataset.gbell;
+  settings.mutedGroups.has(g) ? settings.mutedGroups.delete(g) : settings.mutedGroups.add(g);
+  saveSettings();
+  b.outerHTML = gBellBtn(g);
+  tick();
+});
+$("#gAllOn").addEventListener("click", () => { settings.mutedGroups.clear(); saveSettings(); renderFilters(); tick(); });
+$("#gAllOff").addEventListener("click", () => { state.groups.forEach((g) => settings.mutedGroups.add(g)); saveSettings(); renderFilters(); tick(); });
+
+// Đặt lại TẤT CẢ cài đặt về mặc định (không đăng xuất)
+$("#resetBtn").addEventListener("click", () => {
+  if (!confirm("Đặt lại TẤT CẢ cài đặt về mặc định?\n\n(âm lượng, giọng đọc, màu server, chuông từng boss/server, boss đã ghim... sẽ về như ban đầu. Không bị đăng xuất.)")) return;
+  localStorage.removeItem("bossAlarm");
+  location.reload();
+});
 
 $("#filters").addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");

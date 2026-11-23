@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>Boss Alarm</title>
-  <link rel="stylesheet" href="style.css?v=20">
+  <link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
   <!-- Màn hình đăng nhập -->
@@ -110,11 +110,16 @@
       </div>
 
       <div class="prow">
-        <span class="muted">Màu chữ &amp; giọng đọc theo server:</span>
+        <span class="muted">Báo · màu chữ · giọng đọc theo server:</span>
+        <button id="gAllOn" class="btn mini" title="Bật báo cho tất cả server">🔔 Bật hết</button>
+        <button id="gAllOff" class="btn mini" title="Tắt báo cho tất cả server (vẫn hiện trong bảng)">🔕 Tắt hết</button>
         <span class="muted small">(giọng riêng từng boss: bấm 🎙 sau tên boss)</span>
       </div>
       <div id="serverCfg" class="srows"></div>
-      <span id="status" class="muted small"></span>
+      <div class="prow">
+        <button id="resetBtn" class="btn danger" title="Xoá hết cài đặt đã lưu, quay về như lúc đầu">↺ Đặt lại tất cả về mặc định</button>
+        <span id="status" class="muted small"></span>
+      </div>
     </section>
 
     <table>
@@ -133,6 +138,6 @@
     <p class="muted small foot">Giữ tab này mở. Lần đầu phải bấm "Bật âm thanh" thì trình duyệt mới cho phát tiếng.</p>
   </div>
 
-  <script src="app.js?v=27"></script>
+  <script src="app.js?v=28"></script>
 </body>
 </html>
