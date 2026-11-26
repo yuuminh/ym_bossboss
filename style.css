@@ -287,3 +287,4 @@ tr.passed { opacity: .5; }
   background: var(--card); border: 1px solid var(--accent); border-radius: 10px;
   box-shadow: 0 6px 22px rgba(0, 0, 0, .55); font-size: 13px;
 }
+.update-bar .update-thanks { flex: 1 1 100%; text-align: center; font-weight: 700; color: #ff8fa0; }

@@ -295,6 +295,7 @@ tr.passed { opacity: .5; }
   background: var(--card); border: 1px solid var(--accent); border-radius: 10px;
   box-shadow: 0 6px 22px rgba(0, 0, 0, .55); font-size: 13px;
 }
+.update-bar .update-thanks { flex: 1 1 100%; text-align: center; font-weight: 700; color: #ff8fa0; }
 
 </style>
 </head>
@@ -377,6 +378,7 @@ tr.passed { opacity: .5; }
           <option value="bossfemale">Boss Boss - giọng nữ</option>
           <option value="srvhas">Tên server + có boss</option>
           <option value="bossonly">Chỉ tên boss</option>
+          <option value="ltdonate">LT donate</option>
         </select>
         <select id="voiceSel" title="Giọng đọc (mặc định Google Dịch)"><option>…</option></select>
         <button id="nameTest" class="btn">▶ Thử</button>
@@ -436,6 +438,7 @@ tr.passed { opacity: .5; }
 
   <!-- Dải báo có bản mới (chỉ hiện khi index.html trên máy chủ có số app.js?v= mới hơn) -->
   <div id="updateBar" class="update-bar" hidden role="status">
+    <div class="update-thanks">💖 Cảm ơn LT đã donate, mở chức năng gọi boss riêng LT 💖</div>
     <span>🔄 Có bản cập nhật mới! Bấm "Tải lại ngay" để dùng bản mới nhất.</span>
     <button type="button" id="updateReload" class="btn primary">Tải lại ngay</button>
     <button type="button" id="updateLater" class="btn">Để sau</button>
@@ -475,7 +478,7 @@ tr.passed { opacity: .5; }
   setTimeout(function(){ if(window.checkUpdate) checkUpdate(); }, 3000);   // preview: kiểm tra sau 3 giây thay vì 5 phút
 })();
 </script>
-<script data-src="app.js?v=43">
+<script data-src="app.js?v=44">
 "use strict";
 
 /* ================= CẤU HÌNH — CHỈ SỬA PHẦN NÀY ================= */
@@ -529,7 +532,7 @@ const settings = {
   mutedGroups: new Set(saved.mutedGroups ?? []),   // server bị tắt báo (vẫn hiện trong bảng, chỉ không kêu)
   voiceByBoss: saved.voiceByBoss ?? {},    // giọng riêng từng boss: { "T7-Katan": "tên giọng" }
   voiceByGroup: saved.voiceByGroup ?? {},  // giọng riêng từng server: { T7: "tên giọng" }
-  callMode: ["srvboss", "bossmale", "bossfemale", "srvhas", "bossonly"].includes(saved.callMode) ? saved.callMode : "srvboss",   // âm báo chung (mặc định: tên server + tên boss)
+  callMode: ["srvboss", "bossmale", "bossfemale", "srvhas", "bossonly", "ltdonate"].includes(saved.callMode) ? saved.callMode : "srvboss",   // âm báo chung (mặc định: tên server + tên boss)
   callByGroup: Object.fromEntries(Object.entries(saved.callByGroup ?? {}).filter(([, v]) => typeof v === "string")),   // âm báo riêng từng server: { T7: "bossonly" } — không có thì theo chung
   tierOff: saved.tierOff ?? {},            // loại boss bị tắt báo theo server: { T7: ["1","5","10"] }
   grace: saved.grace ?? CONFIG.PASSED_GRACE_MINUTES,   // boss đã ra, ngắt khỏi đầu bảng sau bao nhiêu phút
@@ -1007,6 +1010,7 @@ const CALL_MODES = [
   ["bossfemale", "Boss Boss - giọng nữ"],
   ["srvhas", "Tên server + có boss"],
   ["bossonly", "Chỉ tên boss"],
+  ["ltdonate", "LT donate"],
 ];
 const isBossBoss = (m) => m === "bossmale" || m === "bossfemale";
 function modeOf(g) {
@@ -1152,6 +1156,8 @@ function announce(items, forceMode) {
       speak(serverPhrase(it.group), voiceFor(it));
     } else if (mode === "bossonly") {
       speak(bossOnlyName(it.name), voiceFor(it));
+    } else if (mode === "ltdonate") {
+      speak(`Lờ Tê ơi, ${spokenName(it.name)} sắp ra`, voiceFor(it));   // "LT (Lờ Tê) ơi" + tên server + tên boss + "sắp ra"
     } else {
       speak(spokenName(it.name), voiceFor(it));   // tên server + tên boss
     }
@@ -1626,7 +1632,7 @@ function previewVoice(bossName, group, voiceName) {
   speechSynthesis.cancel();
   // đọc thử theo đúng âm báo của server đó (Chỉ tên boss thì chỉ đọc tên boss...)
   const mode = modeOf(g);
-  const text = mode === "bossonly" ? bossOnlyName(sample) : mode === "srvhas" ? serverPhrase(g) : spokenName(sample);
+  const text = mode === "bossonly" ? bossOnlyName(sample) : mode === "srvhas" ? serverPhrase(g) : mode === "ltdonate" ? `Lờ Tê ơi, ${spokenName(sample)} sắp ra` : spokenName(sample);
   speak(text, voiceFor({ name: bossName || "", group: g }));
 }
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>Boss Alarm</title>
-  <link rel="stylesheet" href="style.css?v=29">
+  <link rel="stylesheet" href="style.css?v=30">
 </head>
 <body>
   <!-- Màn hình đăng nhập -->
@@ -86,6 +86,7 @@
           <option value="bossfemale">Boss Boss - giọng nữ</option>
           <option value="srvhas">Tên server + có boss</option>
           <option value="bossonly">Chỉ tên boss</option>
+          <option value="ltdonate">LT donate</option>
         </select>
         <select id="voiceSel" title="Giọng đọc (mặc định Google Dịch)"><option>…</option></select>
         <button id="nameTest" class="btn">▶ Thử</button>
@@ -145,11 +146,12 @@
 
   <!-- Dải báo có bản mới (chỉ hiện khi index.html trên máy chủ có số app.js?v= mới hơn) -->
   <div id="updateBar" class="update-bar" hidden role="status">
+    <div class="update-thanks">💖 Cảm ơn LT đã donate, mở chức năng gọi boss riêng LT 💖</div>
     <span>🔄 Có bản cập nhật mới! Bấm "Tải lại ngay" để dùng bản mới nhất.</span>
     <button type="button" id="updateReload" class="btn primary">Tải lại ngay</button>
     <button type="button" id="updateLater" class="btn">Để sau</button>
   </div>
 
-  <script src="app.js?v=43"></script>
+  <script src="app.js?v=44"></script>
 </body>
 </html>

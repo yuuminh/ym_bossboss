@@ -51,7 +51,7 @@ const settings = {
   mutedGroups: new Set(saved.mutedGroups ?? []),   // server bị tắt báo (vẫn hiện trong bảng, chỉ không kêu)
   voiceByBoss: saved.voiceByBoss ?? {},    // giọng riêng từng boss: { "T7-Katan": "tên giọng" }
   voiceByGroup: saved.voiceByGroup ?? {},  // giọng riêng từng server: { T7: "tên giọng" }
-  callMode: ["srvboss", "bossmale", "bossfemale", "srvhas", "bossonly"].includes(saved.callMode) ? saved.callMode : "srvboss",   // âm báo chung (mặc định: tên server + tên boss)
+  callMode: ["srvboss", "bossmale", "bossfemale", "srvhas", "bossonly", "ltdonate"].includes(saved.callMode) ? saved.callMode : "srvboss",   // âm báo chung (mặc định: tên server + tên boss)
   callByGroup: Object.fromEntries(Object.entries(saved.callByGroup ?? {}).filter(([, v]) => typeof v === "string")),   // âm báo riêng từng server: { T7: "bossonly" } — không có thì theo chung
   tierOff: saved.tierOff ?? {},            // loại boss bị tắt báo theo server: { T7: ["1","5","10"] }
   grace: saved.grace ?? CONFIG.PASSED_GRACE_MINUTES,   // boss đã ra, ngắt khỏi đầu bảng sau bao nhiêu phút
@@ -529,6 +529,7 @@ const CALL_MODES = [
   ["bossfemale", "Boss Boss - giọng nữ"],
   ["srvhas", "Tên server + có boss"],
   ["bossonly", "Chỉ tên boss"],
+  ["ltdonate", "LT donate"],
 ];
 const isBossBoss = (m) => m === "bossmale" || m === "bossfemale";
 function modeOf(g) {
@@ -674,6 +675,8 @@ function announce(items, forceMode) {
       speak(serverPhrase(it.group), voiceFor(it));
     } else if (mode === "bossonly") {
       speak(bossOnlyName(it.name), voiceFor(it));
+    } else if (mode === "ltdonate") {
+      speak(`Lờ Tê ơi, ${spokenName(it.name)} sắp ra`, voiceFor(it));   // "LT (Lờ Tê) ơi" + tên server + tên boss + "sắp ra"
     } else {
       speak(spokenName(it.name), voiceFor(it));   // tên server + tên boss
     }
@@ -1148,7 +1151,7 @@ function previewVoice(bossName, group, voiceName) {
   speechSynthesis.cancel();
   // đọc thử theo đúng âm báo của server đó (Chỉ tên boss thì chỉ đọc tên boss...)
   const mode = modeOf(g);
-  const text = mode === "bossonly" ? bossOnlyName(sample) : mode === "srvhas" ? serverPhrase(g) : spokenName(sample);
+  const text = mode === "bossonly" ? bossOnlyName(sample) : mode === "srvhas" ? serverPhrase(g) : mode === "ltdonate" ? `Lờ Tê ơi, ${spokenName(sample)} sắp ra` : spokenName(sample);
   speak(text, voiceFor({ name: bossName || "", group: g }));
 }
 
