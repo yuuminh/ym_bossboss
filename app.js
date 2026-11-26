@@ -61,6 +61,7 @@ const settings = {
   look: saved.look ?? CONFIG.LOOKAHEAD_MINUTES,         // hiện boss ra trong bao nhiêu phút tới (0 = tất cả trong ngày)
   // màu từng server: { T7: "#44c173", ... }. Bản màu mặc định mới (colorsV=3) sẽ thay màu cũ 1 lần
   colors: saved.colorsV === 3 ? (saved.colors ?? {}) : {},
+  hideMuted: saved.hideMuted ?? false,                  // nút "Ẩn boss tắt chuông": ẩn các boss đang tắt chuông khỏi bảng
   hideDone: saved.hideDone ?? false,                    // bấm tiêu đề "Đếm ngược": loại bỏ boss đã ra
   pins: saved.pins ?? {},                             // boss được "neo" 📌: { key: {name, group, h, m, s, death, t} }
   panel: saved.panel ?? true,                           // khung Cài đặt đang mở hay thu gọn
@@ -119,6 +120,7 @@ function saveSettings() {
     colorsV: 3,
     pins: settings.pins,
     hideDone: settings.hideDone,
+    hideMuted: settings.hideMuted,
     panel: settings.panel,
     hidden: [...settings.hidden],
     known: [...settings.known],
@@ -495,6 +497,11 @@ function bossTier(name) {
   const pts = POINT_MAP.get(normName(i >= 0 ? name.slice(i + 1) : name));
   return pts == null ? null : pts >= 10 ? "10" : String(pts);
 }
+// Boss xuất hiện 100% (nhóm "100%" ở dòng "Báo boss" của từng server). Muốn thêm / bớt boss thì sửa danh sách ở đây.
+const BOSS_100 = new Set(["Behemoth", "Black Lily", "Corun", "Quái đột biến Cruma", "Cruma Ô Uế", "Glaki",
+  "Gương của sự lãng quên", "Katan", "Medusa", "Pan Dra'eed", "Randor", "Samuel", "Sarka", "Savan",
+  "Stonegeist", "Talakin", "Timiniel", "Timitris"].map(normName));
+const is100 = (it) => BOSS_100.has(normName(bossPart(it.name)));
 // TOP5: nhóm boss riêng chỉ có ở server K6 (1 boss có thể vừa thuộc loại 1đ/5đ/10+ vừa thuộc TOP5)
 const TOP5_K6 = new Set(["Cabrio", "Harp", "Flint", "Thanatos", "Quái Thú Rồng", "Glaki", "Core Susceptor", "Katan", "Orfen", "Tinh Linh", "Phoenix", "Laha"].map(normName));
 const isK6 = (g) => String(g || "").trim().toUpperCase() === "K6";
@@ -503,6 +510,7 @@ const bossPart = (name) => { name = String(name || ""); const i = name.lastIndex
 function catsOf(it) {
   const c = [], t = bossTier(it.name);
   if (t) c.push(t);
+  if (is100(it)) c.push("100");   // nhóm 100% (mọi server); 1 boss có thể thuộc nhiều nhóm
   if (isK6(it.group) && TOP5_K6.has(normName(bossPart(it.name)))) c.push("top5");
   return c;
 }
@@ -837,7 +845,9 @@ function tick() {
   // "Hiện trước: Tất cả" = hiện mọi boss, kể cả boss đã bị ngắt (nằm cuối bảng, giờ ra của ngày mai).
   // Bấm tiêu đề "Đếm ngược" → loại bỏ boss đã ra (boss neo 📌 và boss đang "Đến giờ" vẫn giữ)
   const doneGone = (i) => settings.hideDone && i.remaining < 0 && !i.arrived && !i.pinned;
-  const visible = all.filter((i) => !doneGone(i) && (i.pinned || i.ghost || maxSec === 0 || (!i.stale && i.remaining <= maxSec)));
+  // Nút "Ẩn/hiện boss tắt chuông" (boss neo 📌 vẫn giữ)
+  const filteredOut = (i) => !i.pinned && settings.hideMuted && isSilenced(i);
+  const visible = all.filter((i) => !doneGone(i) && !filteredOut(i) && (i.pinned || i.ghost || maxSec === 0 || (!i.stale && i.remaining <= maxSec)));
   const tb = $("#list");
   // dòng boss: sáng đến hết phút "Đến giờ"; sang phút sau mới nhạt đi (boss neo 📌 thì luôn sáng)
   const rowClass = (i) =>
@@ -939,7 +949,7 @@ function tiersHtml(g) {
     const on = !off.includes(t), what = t === "top5" ? "nhóm TOP5" : `boss ${label}`;
     return `<button type="button" class="btn mini tog${on ? " on" : ""}" data-gtier="${e}" data-t="${t}" title="${on ? "Đang bật báo" : "Đang TẮT báo"} ${what} của ${e} — bấm để đổi${t === "top5" ? ". Boss thuộc nhiều nhóm thì báo khi có 1 nhóm đang bật" : ""}">${label}</button>`;
   };
-  return `<span class="muted small">Báo boss:</span>` + tier("1", "1đ") + tier("5", "5đ") + tier("10", "10+") + (isK6(g) ? tier("top5", "TOP5") : "");
+  return `<span class="muted small">Báo boss:</span>` + tier("1", "1đ") + tier("5", "5đ") + tier("10", "10+") + tier("100", "100%") + (isK6(g) ? tier("top5", "TOP5") : "");
 }
 
 function renderFilters() {
@@ -1222,6 +1232,16 @@ $("#sortCd").addEventListener("click", () => {
 });
 paintSortHeader();
 
+// Nút "Ẩn/hiện boss tắt chuông": ẩn / hiện lại boss đang tắt chuông
+function paintFilterBtns() {
+  // đang hiện đủ boss → nút xanh, ghi "Ẩn boss tắt chuông"; đang ẩn → nút thường, ghi "Hiện boss tắt chuông"
+  $("#hideMutedBtn").classList.toggle("on", !settings.hideMuted);
+  $("#hideMutedBtn").textContent = settings.hideMuted ? "Hiện boss tắt chuông" : "Ẩn boss tắt chuông";
+  $("#hideMutedBtn").title = settings.hideMuted ? "Đang ẨN boss tắt chuông. Bấm để hiện lại" : "Bấm để ẩn các boss đang tắt chuông khỏi bảng";
+}
+$("#hideMutedBtn").addEventListener("click", () => { settings.hideMuted = !settings.hideMuted; saveSettings(); paintFilterBtns(); state.sig = ""; tick(); });
+paintFilterBtns();
+
 $("#lookSel").value = String(settings.look);
 if ($("#lookSel").value !== String(settings.look)) { settings.look = 0; $("#lookSel").value = "0"; }
 $("#lookSel").addEventListener("change", (e) => { settings.look = +e.target.value; saveSettings(); state.sig = ""; tick(); });
@@ -1298,3 +1318,34 @@ $("#logoutBtn").addEventListener("click", () => {
 });
 
 if (hasSession()) startApp();
+
+/* ---------------- Báo có bản mới ---------------- */
+// Mỗi 5 phút âm thầm tải lại index.html, so số "v" của app.js. Khác (mới hơn) thì hiện dải thông báo; giống thì không làm gì.
+// (Nhớ tăng số ?v= của app.js trong index.html mỗi lần sửa code thì trang mới biết có bản mới.)
+const UPDATE_CHECK_MS = 5 * 60 * 1000;
+let updateDismissed = 0;   // số bản người dùng đã bấm "Để sau" (bản mới hơn nữa thì báo lại)
+function currentVer() {
+  const s = document.querySelector('script[src*="app.js"], script[data-src*="app.js"]');
+  const m = s && (s.getAttribute("src") || s.dataset.src || "").match(/app\.js\?v=(\d+)/);
+  return m ? +m[1] : null;
+}
+async function checkUpdate() {
+  try {
+    const cur = currentVer();
+    if (cur == null) return;
+    const res = await fetch("index.html?_=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) return;
+    const m = (await res.text()).match(/app\.js\?v=(\d+)/);
+    const latest = m ? +m[1] : 0;
+    if (latest > cur && latest > updateDismissed) {
+      $("#updateBar").dataset.ver = String(latest);
+      $("#updateBar").hidden = false;
+    }
+  } catch (e) { /* mất mạng / lỗi thì bỏ qua, 5 phút sau hỏi lại */ }
+}
+$("#updateReload").addEventListener("click", () => location.reload());
+$("#updateLater").addEventListener("click", () => {
+  updateDismissed = +$("#updateBar").dataset.ver || 0;
+  $("#updateBar").hidden = true;
+});
+setInterval(checkUpdate, UPDATE_CHECK_MS);

@@ -271,3 +271,19 @@ tr.passed { opacity: .5; }
 }
 #donateBtn.on svg { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .25)); }
 #donateBtn.on::after { display: block; }
+
+/* thêm nút 100% ở dòng "Báo boss" nên thu gọn thêm để dòng K6 (1đ 5đ 10+ 100% TOP5) vẫn nằm trên 1 dòng */
+.srow { gap: 6px 6px; }
+.srow .mpart select.modesel { max-width: 120px; }
+.srow .vpart select { max-width: 82px; }
+.srow input.hex { width: 66px; }
+.srow .tpart { padding-left: 6px; margin-left: 2px; gap: 3px; }
+
+/* Dải báo có bản mới */
+.update-bar {
+  position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center;
+  max-width: calc(100vw - 20px); padding: 8px 12px;
+  background: var(--card); border: 1px solid var(--accent); border-radius: 10px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .55); font-size: 13px;
+}
