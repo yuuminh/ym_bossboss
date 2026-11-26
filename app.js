@@ -22,7 +22,7 @@ const CONFIG = {
   CALL_PHRASE: "Boss Boss!", // câu hô (giọng nữ tiếng Anh, hô 2 lần như file ALRMCLOCK)
   WARN_SECONDS: 60,         // báo trước bao nhiêu giây (đổi được trên trang)
   REFRESH_SECONDS: 30,      // bao lâu tải lại sheet 1 lần
-  LOOKAHEAD_MINUTES: 120,   // chỉ hiện boss ra trong bao nhiêu phút tới (120 = 2 tiếng, 0 = hiện HẾT danh sách)
+  LOOKAHEAD_MINUTES: 0,   // chỉ hiện boss ra trong bao nhiêu phút tới (120 = 2 tiếng, 0 = hiện HẾT danh sách)
   PASSED_GRACE_MINUTES: 10, // mặc định: boss đã ra vẫn ở đầu bảng bao nhiêu phút (chọn 5/10/15 ngay trên trang)
 };
 /* =============================================================== */
@@ -45,6 +45,7 @@ const settings = {
   ding: saved.dingOn ?? false,         // ô tick "Bật âm báo khi boss ra": ding ding đúng lúc boss ra
   voiceName: saved.voiceName ?? "",
   hidden: new Set(saved.hidden ?? []),
+  known: new Set(saved.known ?? []),   // server đã từng thấy: server mới (trừ K6) mặc định bị ẩn, người dùng tự bấm chọn hiện
   muted: new Set(saved.muted ?? []),   // boss bị tắt chuông (lưu theo tên)
   mutedGroups: new Set(saved.mutedGroups ?? []),   // server bị tắt báo (vẫn hiện trong bảng, chỉ không kêu)
   voiceByBoss: saved.voiceByBoss ?? {},    // giọng riêng từng boss: { "T7-Katan": "tên giọng" }
@@ -119,6 +120,7 @@ function saveSettings() {
     hideDone: settings.hideDone,
     panel: settings.panel,
     hidden: [...settings.hidden],
+    known: [...settings.known],
     muted: [...settings.muted],
     mutedGroups: [...settings.mutedGroups],
     voiceByBoss: settings.voiceByBoss,
@@ -283,6 +285,15 @@ async function loadSheet() {
     state.dated = dated;
     state.mode = mode;
     state.groups = new Set(bosses.map((b) => b.group));   // chỉ server có boss đã có giờ
+    // Mặc định chỉ hiện K6: server nào lần đầu xuất hiện (không phải K6) sẽ bị ẩn, người dùng bấm nút server để hiện thêm
+    let newG = false;
+    for (const g of state.groups) {
+      if (settings.known.has(g)) continue;
+      settings.known.add(g);
+      if (g.trim().toUpperCase() !== "K6") settings.hidden.add(g);
+      newG = true;
+    }
+    if (newG) { saveSettings(); state.sig = ""; }
     state.lastFetch = new Date();
     state.error = bosses.length ? null : "Đọc được sheet nhưng không thấy dòng nào có giờ hợp lệ (kiểm tra cột/GID)";
     renderFilters();
@@ -483,7 +494,24 @@ function bossTier(name) {
   const pts = POINT_MAP.get(normName(i >= 0 ? name.slice(i + 1) : name));
   return pts == null ? null : pts >= 10 ? "10" : String(pts);
 }
-const tierMuted = (it) => { const t = bossTier(it.name); return !!t && (settings.tierOff[it.group] || []).includes(t); };
+// TOP5: nhóm boss riêng chỉ có ở server K6 (1 boss có thể vừa thuộc loại 1đ/5đ/10+ vừa thuộc TOP5)
+const TOP5_K6 = new Set(["Cabrio", "Harp", "Flint", "Thanatos", "Quái Thú Rồng", "Glaki", "Core Susceptor", "Katan", "Orfen", "Tinh Linh", "Phoenix", "Laha"].map(normName));
+const isK6 = (g) => String(g || "").trim().toUpperCase() === "K6";
+const bossPart = (name) => { name = String(name || ""); const i = name.lastIndexOf("-"); return (i >= 0 ? name.slice(i + 1) : name).trim(); };
+// Các nhóm của 1 boss: loại điểm ("1" | "5" | "10") và "top5" (chỉ K6)
+function catsOf(it) {
+  const c = [], t = bossTier(it.name);
+  if (t) c.push(t);
+  if (isK6(it.group) && TOP5_K6.has(normName(bossPart(it.name)))) c.push("top5");
+  return c;
+}
+// Boss bị tắt báo khi TẤT CẢ nhóm của nó đang tắt (còn 1 nhóm bật là vẫn báo). Boss không thuộc nhóm nào thì luôn báo.
+const tierMuted = (it) => {
+  const c = catsOf(it);
+  if (!c.length) return false;
+  const off = settings.tierOff[it.group] || [];
+  return c.every((x) => off.includes(x));
+};
 const isSilenced = (it) => settings.muted.has(it.name) || settings.mutedGroups.has(it.group) || tierMuted(it);
 // Âm báo của 1 server: ô riêng của server, chưa chọn thì theo âm báo chung
 const CALL_MODES = [
@@ -575,8 +603,30 @@ function serverPhrase(group) {
   return `${w || String(group || "").replace(/-/g, " ")} có ${CONFIG.BOSS_WORD}`;
 }
 
-// Âm báo lúc boss ra: "ding" | "ting" | "voice" (đọc "Boss ra")
-function playChime(kind) {
+// Âm báo lúc boss ra: "ding" | "ting" | "voice" (đọc "Boss ra") | "srvvoice" (đọc "Tên server + boss ra")
+// items: các boss vừa ra [{ name, group }] — dùng cho kiểu "srvvoice"
+function playChime(kind, items) {
+  if (kind === "bossup" || kind === "bossfast") {
+    if (!("speechSynthesis" in window)) return playDing();
+    speechSynthesis.resume();
+    const tail = kind === "bossup" ? "úp" : "nhanh nhanh kẻo miss";   // muốn đổi câu đọc thì sửa ở đây
+    (items && items.length ? items : [sampleBoss()]).forEach((it) => {   // mỗi boss đọc 1 lần
+      speak(`${bossOnlyName(it.name)} ${tail}`, voiceFor(it, settings.dingVoice));
+    });
+    return;
+  }
+  if (kind === "srvvoice") {
+    if (!("speechSynthesis" in window)) return playDing();
+    speechSynthesis.resume();
+    const seen = new Set();
+    (items && items.length ? items : [sampleBoss()]).forEach((it) => {
+      if (seen.has(it.group)) return;   // mỗi server đọc 1 lần
+      seen.add(it.group);
+      const w = serverWords(it.group) || String(it.group || "").replace(/-/g, " ");
+      speak(`${w} ${CONFIG.BOSS_WORD} ra`, voiceFor({ name: "", group: it.group }, settings.dingVoice));
+    });
+    return;
+  }
   if (kind === "voice") {
     if ("speechSynthesis" in window) { speechSynthesis.resume(); speak("Boss ra", voiceFor({ name: "", group: "" }, settings.dingVoice)); }
     return;
@@ -727,14 +777,14 @@ function tick() {
   if (toAnnounce.length && state.enabled) announce(toAnnounce);
 
   // Âm báo "ding ding" đúng lúc boss ra (nếu có tick chọn)
-  let dingNow = false;
+  const dingItems = [];
   for (const it of items) {
     if (it.remaining <= 0 && it.remaining > -30 && !state.dinged.has(it.key)) {
       state.dinged.add(it.key);
-      if (settings.ding && !isSilenced(it)) dingNow = true;
+      if (settings.ding && !isSilenced(it)) dingItems.push({ name: it.name, group: it.group });
     }
   }
-  if (dingNow && state.enabled) playChime(settings.dingKind);
+  if (dingItems.length && state.enabled) playChime(settings.dingKind, dingItems);
 
   // Boss không còn trong sheet nhưng vẫn phải giữ:
   //  - boss đã neo 📌 → giữ đến khi bỏ neo
@@ -884,8 +934,11 @@ function modeHtml(g) {
 function tiersHtml(g) {
   const off = settings.tierOff[g] || [];
   const e = esc(g);
-  const tier = (t, label) => `<button type="button" class="btn mini tog${off.includes(t) ? "" : " on"}" data-gtier="${e}" data-t="${t}" title="${off.includes(t) ? "Đang TẮT báo" : "Đang bật báo"} boss ${label} của ${e} — bấm để đổi">${label}</button>`;
-  return `<span class="muted small">Báo boss:</span>` + tier("1", "1đ") + tier("5", "5đ") + tier("10", "10+");
+  const tier = (t, label) => {
+    const on = !off.includes(t), what = t === "top5" ? "nhóm TOP5" : `boss ${label}`;
+    return `<button type="button" class="btn mini tog${on ? " on" : ""}" data-gtier="${e}" data-t="${t}" title="${on ? "Đang bật báo" : "Đang TẮT báo"} ${what} của ${e} — bấm để đổi${t === "top5" ? ". Boss thuộc nhiều nhóm thì báo khi có 1 nhóm đang bật" : ""}">${label}</button>`;
+  };
+  return `<span class="muted small">Báo boss:</span>` + tier("1", "1đ") + tier("5", "5đ") + tier("10", "10+") + (isK6(g) ? tier("top5", "TOP5") : "");
 }
 
 function renderFilters() {
@@ -1089,6 +1142,32 @@ function previewVoice(bossName, group, voiceName) {
 }
 
 $("#enableBtn").addEventListener("click", enableAudio);
+
+// Nút Donate: mở / đóng bảng QR bên phải (✕, phím Esc, hoặc tự đóng sau 30 giây)
+let donateTimer = null;   // bảng donate tự đóng sau 30 giây
+function setDonate(open) {
+  clearTimeout(donateTimer);
+  if (open) donateTimer = setTimeout(() => setDonate(false), 30000);
+  $("#donatePanel").hidden = !open;
+  $("#donateBtn").setAttribute("aria-expanded", String(open));
+  $("#donateBtn").classList.toggle("on", open);
+}
+// "Ting ting" nhỏ khi bấm nút Donate (theo thanh âm lượng, nhỏ hơn âm báo boss; tắt tiếng thì im)
+function donateTing() {
+  const ctx = state.audio, v = vol() * 0.3;
+  if (!ctx || v <= 0) return;
+  [[0, 1568], [0.14, 2093]].forEach(([d, f]) => {
+    const t = ctx.currentTime + d, osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = "sine"; osc.frequency.value = f;
+    g.gain.setValueAtTime(v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t); osc.stop(t + 0.36);
+  });
+}
+$("#donateBtn").addEventListener("click", () => { enableAudio(); donateTing(); setDonate($("#donatePanel").hidden); });
+$("#donateClose").addEventListener("click", () => setDonate(false));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") setDonate(false); });
 // Boss mẫu để nghe thử (lấy boss đầu bảng, không có thì T7-Katan)
 function sampleBoss() {
   const b = state.bosses[0];
@@ -1143,7 +1222,7 @@ $("#sortCd").addEventListener("click", () => {
 paintSortHeader();
 
 $("#lookSel").value = String(settings.look);
-if ($("#lookSel").value !== String(settings.look)) { settings.look = 120; $("#lookSel").value = "120"; }
+if ($("#lookSel").value !== String(settings.look)) { settings.look = 0; $("#lookSel").value = "0"; }
 $("#lookSel").addEventListener("change", (e) => { settings.look = +e.target.value; saveSettings(); state.sig = ""; tick(); });
 $("#graceSel").value = String(settings.grace);
 $("#graceSel").addEventListener("change", (e) => { settings.grace = +e.target.value; saveSettings(); tick(); });
@@ -1155,7 +1234,7 @@ $("#dingChk").checked = settings.ding;
 $("#dingChk").addEventListener("change", (e) => { settings.ding = e.target.checked; saveSettings(); if (e.target.checked) { enableAudio(); playChime(settings.dingKind); } });
 $("#dingSel").value = settings.dingKind;
 if ($("#dingSel").value !== settings.dingKind) { settings.dingKind = "voice"; $("#dingSel").value = "voice"; }
-const syncDingVoice = () => { $("#dingVoiceSel").disabled = settings.dingKind !== "voice"; };
+const syncDingVoice = () => { $("#dingVoiceSel").disabled = !["voice", "srvvoice", "bossup", "bossfast"].includes(settings.dingKind); };
 syncDingVoice();
 $("#dingSel").addEventListener("change", (e) => { settings.dingKind = e.target.value; saveSettings(); syncDingVoice(); enableAudio(); playChime(settings.dingKind); });
 $("#dingTest").addEventListener("click", () => { enableAudio(); playChime(settings.dingKind); });

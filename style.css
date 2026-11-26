@@ -211,3 +211,63 @@ tr.passed { opacity: .5; }
 .srow .vpart select { max-width: 110px; }
 .srow .tpart { padding-left: 8px; margin-left: 4px; border-left: 1px solid var(--line); }
 @media (max-width: 760px) { .srow .tpart { flex: 1 1 100%; border-left: 0; padding-left: 22px; margin-left: 0; } }
+/* thu gọn chút để dòng K6 (có thêm nút TOP5) vẫn nằm trên 1 dòng */
+.srow .mpart select.modesel { max-width: 150px; }
+.srow .vpart select { max-width: 95px; }
+.srow .vpart { gap: 3px; }
+.srow .mpart .muted, .srow .tpart .muted { white-space: nowrap; }
+
+/* ===== Nút Donate (nằm dưới nút Ẩn/hiện bảng cài đặt) + bảng QR bên phải ===== */
+#app > header .hbtns { display: grid; grid-template-columns: auto auto auto; gap: 6px 8px; align-items: center; }
+.donate-panel {
+  position: fixed; right: 14px; top: 90px; width: 270px; max-width: calc(100vw - 28px); z-index: 50;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px; text-align: center; box-shadow: 0 8px 28px rgba(0, 0, 0, .55);
+}
+.donate-panel h3 { margin: 0 0 10px; font-size: 15px; }
+.donate-panel img.qr { width: 100%; height: auto; display: block; border-radius: 8px; background: #fff; }
+.donate-panel p { margin: 10px 0 0; font-size: 13px; line-height: 1.5; color: var(--text); }
+.donate-close { position: absolute; top: 6px; right: 8px; background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; line-height: 1; padding: 2px 4px; }
+.donate-close:hover { color: #fff; }
+@media (max-width: 900px) { .donate-panel { top: auto; bottom: 12px; right: 12px; } }
+.donate-panel { width: 230px; right: 10px; padding: 12px; }
+
+/* Nút Donate tự thiết kế: viên thuốc gradient hồng-cam, trái tim đập nhẹ, ánh sáng quét ngang */
+#donateBtn {
+  grid-column: 2; position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 14px; border: 0; border-radius: 999px;
+  font-size: 13px; font-weight: 700; letter-spacing: .3px; color: #fff;
+  background: linear-gradient(135deg, #ff5f8a 0%, #ff8f4d 100%);
+  box-shadow: 0 2px 10px rgba(255, 105, 120, .35), inset 0 1px 0 rgba(255, 255, 255, .35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+#donateBtn:hover { transform: translateY(-1px); filter: brightness(1.08); box-shadow: 0 4px 14px rgba(255, 105, 120, .5), inset 0 1px 0 rgba(255, 255, 255, .4); }
+#donateBtn:active { transform: scale(.96); }
+#donateBtn.on { box-shadow: 0 0 0 2px rgba(255, 255, 255, .45), 0 4px 14px rgba(255, 105, 120, .5); }
+#donateBtn svg { width: 15px; height: 15px; fill: #fff; flex: none; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .25)); animation: heartbeat 1.8s ease-in-out infinite; }
+#donateBtn::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .45), transparent);
+  transform: skewX(-20deg); animation: shine 4s ease-in-out infinite; pointer-events: none;
+}
+@keyframes heartbeat { 0%, 50%, 100% { transform: scale(1); } 12% { transform: scale(1.25); } 24% { transform: scale(1); } 36% { transform: scale(1.15); } }
+@keyframes shine { 0%, 60% { left: -60%; } 100% { left: 130%; } }
+@media (prefers-reduced-motion: reduce) { #donateBtn svg, #donateBtn::after { animation: none; } }
+
+/* Nút Donate: lúc chưa chọn thì trong suốt (viền hồng mảnh), chọn rồi mới lên màu gradient */
+#donateBtn {
+  background: transparent; color: #ff8fa0; border: 1px solid rgba(255, 120, 140, .55);
+  box-shadow: none; text-shadow: none;
+}
+#donateBtn svg { fill: currentColor; filter: none; }
+#donateBtn::after { display: none; }
+#donateBtn:hover { background: rgba(255, 105, 120, .1); border-color: #ff8fa0; box-shadow: none; filter: none; }
+#donateBtn.on {
+  color: #fff; border-color: transparent; text-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+  background: linear-gradient(135deg, #ff5f8a 0%, #ff8f4d 100%);
+  box-shadow: 0 2px 12px rgba(255, 105, 120, .45), inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+#donateBtn.on svg { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .25)); }
+#donateBtn.on::after { display: block; }
