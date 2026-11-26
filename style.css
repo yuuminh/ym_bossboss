@@ -183,3 +183,23 @@ tr.passed { opacity: .5; }
   #app > header .clock { justify-self: end; }
   #app > header .hbtns { justify-self: start; flex-wrap: wrap; }
 }
+
+/* nút bật/tắt nhanh theo server */
+.srow { flex-wrap: wrap; }
+.srow .ctogs { flex: 1 1 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding-left: 22px; }
+.srow .ctogs .tsep { margin-left: 10px; }
+.btn.tog { opacity: .55; }
+.btn.tog.on { opacity: 1; }
+.srow .ctogs select.modesel { min-width: 0; max-width: 190px; font-size: 12px; padding: 2px 4px; }
+.srow .ctogs { flex-wrap: nowrap; }
+@media (max-width: 460px) { .srow .ctogs { flex-wrap: wrap; } }
+
+/* mỗi server 1 dòng */
+.srows { grid-template-columns: 1fr; gap: 4px 0; }
+.srow { flex-wrap: wrap; gap: 6px 8px; }
+.srow .vpart { flex: 0 1 auto; }
+.srow .vpart select { max-width: 130px; }
+.srow .ctogs { flex: 0 0 auto; flex-wrap: nowrap; padding-left: 8px; margin-left: 4px; border-left: 1px solid var(--line); }
+.srow .ctogs select.modesel { max-width: 150px; }
+.srow .ctogs .tsep { margin-left: 6px; }
+@media (max-width: 760px) { .srow .ctogs { flex: 1 1 100%; border-left: 0; padding-left: 22px; margin-left: 0; flex-wrap: wrap; } }
