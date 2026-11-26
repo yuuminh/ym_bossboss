@@ -6,6 +6,7 @@ const CONFIG = {
   // Tạo dòng mới bằng trang hash.html rồi dán vào đây. Thêm nhiều tài khoản được.
   USERS: [
     { user: "admin", hash: "1b2d5e686c285637feccee12ed51b6378f5b86021c18285950d81f39308ff6ec" },   // mật khẩu tạm: boss123 → ĐỔI NGAY
+    { user: "bossboss", hash: "67f122a4943f9e51875a075feb8ff6a5d235d2f529ab9e774f9506bbd5a3b885" },
   ],
 
   // ID nằm trong link sheet: docs.google.com/spreadsheets/d/<SHEET_ID>/edit#gid=<GID>
