@@ -37,7 +37,7 @@ const settings = {
   warn: saved.warn ?? CONFIG.WARN_SECONDS,
   voice: saved.voiceOn ?? false,       // ô tick "Đọc tên boss" (mặc định tắt: chỉ hô "Boss Boss")
   beep: saved.beep ?? true,            // nay là: hô "Boss boss"
-  dingKind: saved.dingKind ?? "ding",   // kiểu âm báo khi boss ra: ding | ting | voice
+  dingKind: saved.dingKindV === 2 ? (saved.dingKind ?? "voice") : "voice",   // bản mới: mặc định "Boss ra" (bỏ lựa chọn "Ding ding" cũ đã lưu 1 lần)   // kiểu âm báo khi boss ra: ding | ting | voice
   serverCall: saved.serverCall ?? false,   // ô tick "Đọc tên server" (mặc định tắt): "Ca sáu có boss"
   beepVoice: saved.beepVoice ?? "female",  // giọng hô Boss Boss: female | male
   serverVoice: saved.serverVoice ?? "",    // giọng đọc tên server ("" = giống giọng đọc tên boss)
@@ -49,7 +49,8 @@ const settings = {
   mutedGroups: new Set(saved.mutedGroups ?? []),   // server bị tắt báo (vẫn hiện trong bảng, chỉ không kêu)
   voiceByBoss: saved.voiceByBoss ?? {},    // giọng riêng từng boss: { "T7-Katan": "tên giọng" }
   voiceByGroup: saved.voiceByGroup ?? {},  // giọng riêng từng server: { T7: "tên giọng" }
-  callByGroup: saved.callByGroup ?? {},    // đọc theo từng server: { T7: { beep, server, name } } — không có thì theo cài đặt chung
+  callMode: ["srvboss", "bossmale", "bossfemale", "srvhas", "bossonly"].includes(saved.callMode) ? saved.callMode : "srvboss",   // âm báo chung (mặc định: tên server + tên boss)
+  callByGroup: Object.fromEntries(Object.entries(saved.callByGroup ?? {}).filter(([, v]) => typeof v === "string")),   // âm báo riêng từng server: { T7: "bossonly" } — không có thì theo chung
   tierOff: saved.tierOff ?? {},            // loại boss bị tắt báo theo server: { T7: ["1","5","10"] }
   grace: saved.grace ?? CONFIG.PASSED_GRACE_MINUTES,   // boss đã ra, ngắt khỏi đầu bảng sau bao nhiêu phút
   volume: saved.volume ?? 100,
@@ -105,6 +106,7 @@ function saveSettings() {
     serverVoice: settings.serverVoice,
     dingVoice: settings.dingVoice,
     dingKind: settings.dingKind,
+    dingKindV: 2,
     voiceName: settings.voiceName,
     grace: settings.grace,
     volume: settings.volume,
@@ -122,6 +124,7 @@ function saveSettings() {
     voiceByBoss: settings.voiceByBoss,
     voiceByGroup: settings.voiceByGroup,
     callByGroup: settings.callByGroup,
+    callMode: settings.callMode,
     tierOff: settings.tierOff,
   }));
 }
@@ -328,7 +331,7 @@ function allVoices() {
   const local = ("speechSynthesis" in window)
     ? speechSynthesis.getVoices().slice().sort((a, b) => isVi(b) - isVi(a) || a.name.localeCompare(b.name))
     : [];
-  local.splice(local.filter(isVi).length, 0, GTTS);
+  local.unshift(GTTS);   // Google Dịch đứng đầu danh sách (giọng mặc định)
   return local;
 }
 
@@ -355,7 +358,6 @@ function voiceOptions(selected, defaultLabel) {
 
 function fillVoices() {
   const optDefault = "Mặc định (như giọng đọc tên boss)";
-  $("#svVoiceSel").innerHTML = voiceOptions(settings.serverVoice, optDefault);
   $("#dingVoiceSel").innerHTML = voiceOptions(settings.dingVoice, optDefault);
   const sel = $("#voiceSel");
   const list = allVoices();
@@ -369,6 +371,7 @@ function fillVoices() {
     if (cur) sel.value = cur.name;
   }
   renderGroupVoices();
+  syncCallVoice();
 }
 
 // Giọng riêng cho từng server (trong khung Ẩn/Hiện)
@@ -482,10 +485,18 @@ function bossTier(name) {
 }
 const tierMuted = (it) => { const t = bossTier(it.name); return !!t && (settings.tierOff[it.group] || []).includes(t); };
 const isSilenced = (it) => settings.muted.has(it.name) || settings.mutedGroups.has(it.group) || tierMuted(it);
-// Cách đọc của 1 server: ô riêng của server, chưa chỉnh thì theo cài đặt chung
-function callCfg(g) {
-  const o = settings.callByGroup[g] || {};
-  return { beep: o.beep ?? settings.beep, server: o.server ?? settings.serverCall, name: o.name ?? settings.voice };
+// Âm báo của 1 server: ô riêng của server, chưa chọn thì theo âm báo chung
+const CALL_MODES = [
+  ["srvboss", "Tên server + tên boss"],
+  ["bossmale", "Boss Boss - giọng nam"],
+  ["bossfemale", "Boss Boss - giọng nữ"],
+  ["srvhas", "Tên server + có boss"],
+  ["bossonly", "Chỉ tên boss"],
+];
+const isBossBoss = (m) => m === "bossmale" || m === "bossfemale";
+function modeOf(g) {
+  const m = settings.callByGroup[g];
+  return CALL_MODES.some(([v]) => v === m) ? m : settings.callMode;
 }
 
 // K6 → "Ca sáu", T7XL → "Tê bảy xâm lược" (không khớp dạng chữ+số thì trả về null)
@@ -511,6 +522,14 @@ function spokenName(name) {
   return `${gs} ${bossSay}`.trim();
 }
 
+// Chỉ tên boss (không có tên server): "T7-Katan" → "xê sáu"
+function bossOnlyName(name) {
+  name = String(name || "");
+  const i = name.lastIndexOf("-");
+  const boss = (i > 0 ? name.slice(i + 1) : name).trim();
+  return PRON_MAP.get(normName(boss)) || boss;
+}
+
 // Câu hô "Boss Boss!" — giống file ALRMCLOCK_v5: giọng nữ tiếng Anh, pitch cao
 function englishVoice(gender) {
   const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
@@ -520,10 +539,10 @@ function englishVoice(gender) {
   return voices.find(isF) || voices[0] || null;
 }
 
-function sayBoss() {
+function sayBoss(gender) {
   const u = new SpeechSynthesisUtterance(CONFIG.CALL_PHRASE);
   u.lang = "en-US";
-  const male = settings.beepVoice === "male";
+  const male = gender === "male";
   const v = englishVoice(male ? "male" : "female");
   if (v) u.voice = v;
   u.pitch = male ? 0.9 : 1.8;
@@ -579,23 +598,27 @@ function playChime(kind) {
   });
 }
 
-// items: [{ name, group }] — mỗi server có cách đọc riêng (Boss Boss / tên server / tên boss)
-function announce(items) {
+// items: [{ name, group }] — mỗi server báo theo âm báo của nó (hoặc forceMode khi bấm Thử)
+function announce(items, forceMode) {
   const synth = "speechSynthesis" in window;
   if (synth) speechSynthesis.resume();
-  const cfgs = items.map((it) => callCfg(it.group));
-  if (cfgs.some((c) => c.beep)) {
-    if (synth) { sayBoss(); sayBoss(); } else playDing();   // "Boss Boss! Boss Boss!"
-  }
-  // "Ca sáu có boss": mỗi server đọc 1 lần (nhiều boss cùng server cùng lúc thì gộp)
-  const done = new Set();
-  items.forEach((it, i) => {
-    if (!cfgs[i].server || done.has(it.group)) return;
-    done.add(it.group);
-    speak(serverPhrase(it.group), voiceFor(it, settings.serverVoice));
+  const done = new Set();   // "Boss Boss" mỗi giọng hô 1 lần, "Tên server có boss" mỗi server 1 lần
+  items.forEach((it) => {
+    const mode = forceMode || modeOf(it.group);
+    if (isBossBoss(mode)) {
+      if (done.has(mode)) return;
+      done.add(mode);
+      if (synth) { const g = mode === "bossmale" ? "male" : "female"; sayBoss(g); sayBoss(g); } else playDing();   // "Boss Boss! Boss Boss!"
+    } else if (mode === "srvhas") {
+      if (done.has("s" + it.group)) return;
+      done.add("s" + it.group);
+      speak(serverPhrase(it.group), voiceFor(it));
+    } else if (mode === "bossonly") {
+      speak(bossOnlyName(it.name), voiceFor(it));
+    } else {
+      speak(spokenName(it.name), voiceFor(it));   // tên server + tên boss
+    }
   });
-  // rồi đọc tên từng boss, mỗi boss bằng giọng riêng của nó (các câu tự xếp hàng nói lần lượt)
-  items.forEach((it, i) => { if (cfgs[i].name) speak(spokenName(it.name), voiceFor(it)); });
 }
 
 /* ---------------- Vòng lặp mỗi giây ---------------- */
@@ -851,26 +874,18 @@ function gBellBtn(g) {
   return `<button type="button" class="bell gbell${off ? " off" : ""}" data-gbell="${esc(g)}" title="${off ? `Đang TẮT báo server ${esc(g)} — bấm để bật` : `Đang bật báo server ${esc(g)} — bấm để tắt`}">${off ? BELL_OFF_SVG : BELL_SVG}</button>`;
 }
 
-// Cách đọc của từng server: 1 ô chọn. Giá trị = 3 số 0/1 theo thứ tự [Boss Boss, tên server, tên boss]; "" = theo cài đặt chung
-const CALL_MODES = [
-  ["", "Theo cài đặt chung"],
-  ["100", "Chỉ Boss Boss"], ["010", "Chỉ tên server"], ["001", "Chỉ tên boss"],
-  ["110", "Boss Boss + tên server"], ["101", "Boss Boss + tên boss"], ["011", "Tên server + tên boss"],
-  ["111", "Cả 3"], ["000", "Không đọc gì (chỉ ding)"],
-];
-function callModeOf(g) {
-  const o = settings.callByGroup[g];
-  return o ? [o.beep, o.server, o.name].map((x) => (x ? 1 : 0)).join("") : "";
+// Âm báo từng server: 1 ô chọn ("" = theo chung). Giọng đọc nằm ở .vpart, nút 1đ / 5đ / 10+ ở .tpart
+function modeHtml(g) {
+  const cur = settings.callByGroup[g] || "";
+  return `<span class="muted small">Âm báo:</span><select class="modesel" data-gmode="${esc(g)}" title="Âm báo khi boss của server này sắp ra">` +
+    `<option value="">Theo cài đặt chung</option>` +
+    CALL_MODES.map(([v, l]) => `<option value="${v}"${v === cur ? " selected" : ""}>${l}</option>`).join("") + `</select>`;
 }
-// Ô chọn cách đọc + nút bật/tắt nhanh loại boss được báo (1đ / 5đ / 10+)
-function togsHtml(g) {
+function tiersHtml(g) {
   const off = settings.tierOff[g] || [];
-  const e = esc(g), cur = callModeOf(g);
+  const e = esc(g);
   const tier = (t, label) => `<button type="button" class="btn mini tog${off.includes(t) ? "" : " on"}" data-gtier="${e}" data-t="${t}" title="${off.includes(t) ? "Đang TẮT báo" : "Đang bật báo"} boss ${label} của ${e} — bấm để đổi">${label}</button>`;
-  return `<span class="muted small">Đọc:</span>` +
-    `<select class="modesel" data-gmode="${e}" title="Cách đọc khi boss của server này sắp ra">` +
-    CALL_MODES.map(([v, l]) => `<option value="${v}"${v === cur ? " selected" : ""}>${l}</option>`).join("") + `</select>` +
-    `<span class="muted small tsep">Báo:</span>` + tier("1", "1đ") + tier("5", "5đ") + tier("10", "10+");
+  return `<span class="muted small">Báo boss:</span>` + tier("1", "1đ") + tier("5", "5đ") + tier("10", "10+");
 }
 
 function renderFilters() {
@@ -882,7 +897,7 @@ function renderFilters() {
     `<div class="srow" data-row="${esc(g)}">${gBellBtn(g)}<span class="sname" style="color:${colorOf(g)}">${esc(g)}</span>` +
     `<input type="color" data-color="${esc(g)}" value="${colorOf(g)}">` +
     `<input type="text" class="hex" data-hex="${esc(g)}" value="${colorOf(g)}" maxlength="7" spellcheck="false" placeholder="#rrggbb" title="Dán mã màu hex, ví dụ #ff6b6b">` +
-    `<span class="vpart"></span><span class="ctogs">${togsHtml(g)}</span></div>`
+    `<span class="mpart">${modeHtml(g)}</span><span class="vpart"></span><span class="tpart">${tiersHtml(g)}</span></div>`
   ).join("") || '<span class="muted small">(có sheet rồi sẽ hiện)</span>';
   renderGroupVoices();
 }
@@ -905,15 +920,14 @@ $("#serverCfg").addEventListener("click", (e) => {
   i >= 0 ? arr.splice(i, 1) : arr.push(b.dataset.t);
   saveSettings();
   state.sig = "";
-  b.closest(".ctogs").innerHTML = togsHtml(g);
+  b.closest(".tpart").innerHTML = tiersHtml(g);
   tick();
 });
 $("#serverCfg").addEventListener("change", (e) => {
   const g = e.target.dataset && e.target.dataset.gmode;
   if (!g) return;
-  const v = e.target.value;
-  if (!v) delete settings.callByGroup[g];
-  else settings.callByGroup[g] = { beep: v[0] === "1", server: v[1] === "1", name: v[2] === "1" };
+  if (e.target.value) settings.callByGroup[g] = e.target.value;
+  else delete settings.callByGroup[g];
   saveSettings();
 });
 $("#gAllOn").addEventListener("click", () => { settings.mutedGroups.clear(); saveSettings(); renderFilters(); tick(); });
@@ -1068,7 +1082,10 @@ function previewVoice(bossName, group, voiceName) {
   const sample = bossName || state.bosses.find((b) => b.group === group)?.name || "T7-Katan";
   const g = group || (state.bosses.find((b) => b.name === bossName) || {}).group;
   speechSynthesis.cancel();
-  speak(spokenName(sample), voiceFor({ name: bossName || "", group: g }));
+  // đọc thử theo đúng âm báo của server đó (Chỉ tên boss thì chỉ đọc tên boss...)
+  const mode = modeOf(g);
+  const text = mode === "bossonly" ? bossOnlyName(sample) : mode === "srvhas" ? serverPhrase(g) : spokenName(sample);
+  speak(text, voiceFor({ name: bossName || "", group: g }));
 }
 
 $("#enableBtn").addEventListener("click", enableAudio);
@@ -1077,20 +1094,12 @@ function sampleBoss() {
   const b = state.bosses[0];
   return b ? { name: b.name, group: b.group } : { name: "T7-Katan", group: "T7" };
 }
-$("#testBtn").addEventListener("click", () => {      // thử "Boss Boss"
-  enableAudio();
-  if ("speechSynthesis" in window) { speechSynthesis.resume(); sayBoss(); sayBoss(); } else playDing();
-});
-$("#svTest").addEventListener("click", () => {       // thử đọc tên server
-  enableAudio();
-  const s = sampleBoss();
-  speak(serverPhrase(s.group), voiceFor(s, settings.serverVoice));
-});
-$("#nameTest").addEventListener("click", () => {     // thử đọc tên boss
-  enableAudio();
-  const s = sampleBoss();
-  speak(spokenName(s.name), voiceFor(s));
-});
+// Âm báo chung: ô chọn + giọng đọc + nút Thử
+$("#callSel").value = settings.callMode;
+// Kiểu "Boss Boss" dùng giọng nam/nữ riêng, nên ô giọng đọc tiếng Việt chỉ có tác dụng ở các kiểu còn lại
+function syncCallVoice() { $("#voiceSel").disabled = isBossBoss(settings.callMode) || !allVoices().length; }
+$("#callSel").addEventListener("change", (e) => { settings.callMode = e.target.value; saveSettings(); syncCallVoice(); });
+$("#nameTest").addEventListener("click", () => { enableAudio(); announce([sampleBoss()], settings.callMode); });
 
 $("#volRange").value = String(settings.volume);
 $("#volVal").textContent = settings.volume + "%";
@@ -1142,24 +1151,15 @@ $("#warnSelect").value = String(settings.warn);
 $("#warnSelect").addEventListener("change", (e) => { settings.warn = +e.target.value; saveSettings(); });
 fillVoices();
 $("#voiceSel").addEventListener("change", (e) => { settings.voiceName = e.target.value; saveSettings(); });
-$("#voiceChk").checked = settings.voice;
-$("#voiceChk").addEventListener("change", (e) => { settings.voice = e.target.checked; saveSettings(); });
 $("#dingChk").checked = settings.ding;
 $("#dingChk").addEventListener("change", (e) => { settings.ding = e.target.checked; saveSettings(); if (e.target.checked) { enableAudio(); playChime(settings.dingKind); } });
 $("#dingSel").value = settings.dingKind;
-if ($("#dingSel").value !== settings.dingKind) { settings.dingKind = "ding"; $("#dingSel").value = "ding"; }
+if ($("#dingSel").value !== settings.dingKind) { settings.dingKind = "voice"; $("#dingSel").value = "voice"; }
 const syncDingVoice = () => { $("#dingVoiceSel").disabled = settings.dingKind !== "voice"; };
 syncDingVoice();
 $("#dingSel").addEventListener("change", (e) => { settings.dingKind = e.target.value; saveSettings(); syncDingVoice(); enableAudio(); playChime(settings.dingKind); });
 $("#dingTest").addEventListener("click", () => { enableAudio(); playChime(settings.dingKind); });
-$("#beepVoiceSel").value = settings.beepVoice;
-$("#beepVoiceSel").addEventListener("change", (e) => { settings.beepVoice = e.target.value; saveSettings(); });
-$("#svVoiceSel").addEventListener("change", (e) => { settings.serverVoice = e.target.value; saveSettings(); });
 $("#dingVoiceSel").addEventListener("change", (e) => { settings.dingVoice = e.target.value; saveSettings(); });
-$("#svChk").checked = settings.serverCall;
-$("#svChk").addEventListener("change", (e) => { settings.serverCall = e.target.checked; saveSettings(); });
-$("#beepChk").checked = settings.beep;
-$("#beepChk").addEventListener("change", (e) => { settings.beep = e.target.checked; saveSettings(); });
 
 /* ---------------- Đăng nhập ---------------- */
 // Lưu ý: GitHub Pages là web tĩnh nên đây chỉ là "khóa cửa" ở phía trình duyệt,

@@ -163,7 +163,7 @@ function targetOf(b, now) {
 const PRONOUNCE = {
   "Andras": "an đrát",
   "Behemoth": "be he mót",
-   "Chertuba": "chê tu ba",
+  "Chertuba": "chê tu ba",
   "Core Susceptor": "xê bảy",
   "Cruma Ô Uế": "xê bốn",
   "Gương của sự lãng quên": "Gương",
@@ -176,7 +176,7 @@ const PRONOUNCE = {
   "Quái đột biến Cruma": "Đầm cờ-ru-ma",
   "Randor": "ran đo",
   "Savan": "kiến hai",
-   "Selu": "xê lu",
+  "Selu": "xê lu",
   "Talkin": "lệ tổ",
   "Tempest": "tem pét",
   "Thanatos": "tha na tót",

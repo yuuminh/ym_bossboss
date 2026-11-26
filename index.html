@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>Boss Alarm</title>
-  <link rel="stylesheet" href="style.css?v=23">
+  <link rel="stylesheet" href="style.css?v=24">
 </head>
 <body>
   <!-- Màn hình đăng nhập -->
@@ -78,39 +78,31 @@
       </div>
 
       <div class="prow">
-        <label><input type="checkbox" id="beepChk"> Âm báo "Boss Boss"</label>
-        <select id="beepVoiceSel" title="Giọng hô Boss Boss">
-          <option value="female">Giọng nữ</option>
-          <option value="male">Giọng nam</option>
+        <span>Chọn âm báo</span>
+        <select id="callSel" title="Cách báo khi boss sắp ra">
+          <option value="srvboss">Tên server + tên boss</option>
+          <option value="bossmale">Boss Boss - giọng nam</option>
+          <option value="bossfemale">Boss Boss - giọng nữ</option>
+          <option value="srvhas">Tên server + có boss</option>
+          <option value="bossonly">Chỉ tên boss</option>
         </select>
-        <button id="testBtn" class="btn">▶ Thử</button>
-      </div>
-
-      <div class="prow">
-        <label title='Báo trước đọc kiểu: "Ca sáu có boss", "Tê bảy xâm lược có boss"'><input type="checkbox" id="svChk"> Đọc tên server</label>
-        <select id="svVoiceSel" title="Giọng đọc tên server"></select>
-        <button id="svTest" class="btn">▶ Thử</button>
-      </div>
-
-      <div class="prow">
-        <label><input type="checkbox" id="voiceChk"> Đọc tên boss</label>
-        <select id="voiceSel" title="Giọng đọc tên boss"><option>…</option></select>
+        <select id="voiceSel" title="Giọng đọc (mặc định Google Dịch)"><option>…</option></select>
         <button id="nameTest" class="btn">▶ Thử</button>
       </div>
 
       <div class="prow">
         <label><input type="checkbox" id="dingChk"> Bật âm báo khi boss ra</label>
         <select id="dingSel" title="Kiểu âm báo">
+          <option value="voice">Boss ra</option>
           <option value="ding">Ding ding</option>
           <option value="ting">Ting ting</option>
-          <option value="voice">Boss ra</option>
         </select>
         <select id="dingVoiceSel" title="Giọng đọc &quot;Boss ra&quot; (chỉ dùng khi chọn kiểu Boss ra)"></select>
         <button id="dingTest" class="btn">▶ Thử</button>
       </div>
 
       <div class="prow">
-        <span class="muted">Theo từng server: báo · màu · giọng đọc · cách đọc · loại boss được báo (1đ / 5đ / 10+):</span>
+        <span class="muted">Theo từng server: báo · màu · âm báo · giọng đọc · loại boss được báo (1đ / 5đ / 10+):</span>
         <button id="gAllOn" class="btn mini" title="Bật báo cho tất cả server">🔔 Bật hết</button>
         <button id="gAllOff" class="btn mini" title="Tắt báo cho tất cả server (vẫn hiện trong bảng)">🔕 Tắt hết</button>
         <span class="muted small">(giọng riêng từng boss: bấm 🎙 sau tên boss)</span>
@@ -138,6 +130,6 @@
     <p class="muted small foot">Giữ tab này mở. Lần đầu phải bấm "Bật âm thanh" thì trình duyệt mới cho phát tiếng.</p>
   </div>
 
-  <script src="app.js?v=30"></script>
+  <script src="app.js?v=32"></script>
 </body>
 </html>

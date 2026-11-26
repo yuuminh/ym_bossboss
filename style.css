@@ -203,3 +203,11 @@ tr.passed { opacity: .5; }
 .srow .ctogs select.modesel { max-width: 150px; }
 .srow .ctogs .tsep { margin-left: 6px; }
 @media (max-width: 760px) { .srow .ctogs { flex: 1 1 100%; border-left: 0; padding-left: 22px; margin-left: 0; flex-wrap: wrap; } }
+
+/* mỗi server 1 dòng: 🔔 tên · màu · hex · Âm báo [ô chọn] · giọng ▶ │ Báo boss 1đ 5đ 10+ */
+.srow .mpart, .srow .tpart { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.srow .mpart select.modesel { max-width: 175px; font-size: 12px; padding: 2px 4px; }
+.srow .vpart { flex: 0 1 auto; }
+.srow .vpart select { max-width: 110px; }
+.srow .tpart { padding-left: 8px; margin-left: 4px; border-left: 1px solid var(--line); }
+@media (max-width: 760px) { .srow .tpart { flex: 1 1 100%; border-left: 0; padding-left: 22px; margin-left: 0; } }
